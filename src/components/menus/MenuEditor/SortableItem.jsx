@@ -4,6 +4,7 @@ import { ChevronRight, ChevronDown, GripVertical, Plus, Trash2 } from "lucide-re
 import { IconButton } from "../../ui/Button";
 import Tooltip from "../../ui/Tooltip";
 import MenuCombobox from "./MenuCombobox";
+import { MENU_DEFAULT_LABEL_NEW_ITEM, MENU_DEFAULT_LABEL_NEW_CHILD } from "./utils/menuUtils";
 
 // SortableItem component - memoized
 const SortableItem = memo(function SortableItem({
@@ -81,11 +82,16 @@ const SortableItem = memo(function SortableItem({
       const page = pages.find((p) => p.value === value);
 
       if (page) {
+
+        const trimmedLabel = String(item.label ?? "").trim();
+        const isDefaultLabel = !trimmedLabel || trimmedLabel === MENU_DEFAULT_LABEL_NEW_ITEM || trimmedLabel === MENU_DEFAULT_LABEL_NEW_CHILD;
+
         // User selected an internal page - store pageUuid and derive link from current slug
         onEdit(item.id, {
           ...item,
           pageUuid: page.value,
           link: `${page.slug}.html`,
+          label: isDefaultLabel ? page.label : item.label 
         });
       } else {
         // Custom URL - explicitly clear pageUuid because menu item updates are merged.

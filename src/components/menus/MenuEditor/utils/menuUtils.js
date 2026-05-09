@@ -1,5 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 
+export const MENU_DEFAULT_LABEL_NEW_ITEM = "New Item";
+export const MENU_DEFAULT_LABEL_NEW_CHILD = "New Child";
+
 // Generate a unique ID
 export const generateId = () => `item-${uuidv4()}`;
 

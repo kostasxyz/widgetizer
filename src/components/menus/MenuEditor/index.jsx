@@ -15,7 +15,7 @@ import { debounce, isEqual } from "lodash";
 import Button from "../../ui/Button";
 import SortableList from "./SortableList";
 import DragOverlayComponent from "./DragOverlay";
-import { ensureIds, findItemById, getItemAtPath, generateId } from "./utils/menuUtils";
+import { ensureIds, findItemById, getItemAtPath, generateId, MENU_DEFAULT_LABEL_NEW_ITEM, MENU_DEFAULT_LABEL_NEW_CHILD } from "./utils/menuUtils";
 import {
   flattenTree,
   getProjection,
@@ -307,7 +307,7 @@ function MenuEditor({ initialItems = [], onChange, onDeleteItem }) {
       ...prevItems,
       {
         id: generateId(),
-        label: "New Item",
+        label: MENU_DEFAULT_LABEL_NEW_ITEM,
         link: "",
         items: [],
       },
@@ -412,7 +412,7 @@ function MenuEditor({ initialItems = [], onChange, onDeleteItem }) {
         // Add the new child
         parentItem.items.push({
           id: generateId(),
-          label: "New Child",
+          label: MENU_DEFAULT_LABEL_NEW_CHILD,
           link: "",
           items: [],
         });
