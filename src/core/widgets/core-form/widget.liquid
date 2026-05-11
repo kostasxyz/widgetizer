@@ -1,0 +1,398 @@
+{% assign has_sidebar_blocks = false %}
+{% for blockId in widget.blocksOrder %}
+  {% assign block = widget.blocks[blockId] %}
+  {% if block.type == 'info' or block.type == 'social' %}
+    {% assign has_sidebar_blocks = true %}
+  {% endif %}
+{% endfor %}
+
+{% assign form_name = widget.settings.form_name %}
+{% if form_name == blank %}{% assign form_name = 'Contact' %}{% endif %}
+{% assign form_key = form_name | handleize %}
+{% if form_key == blank %}{% assign form_key = 'contact' %}{% endif %}
+{% assign form_key = form_key | truncate: 64, '' %}
+
+{% assign submit_label = widget.settings.submit_label %}
+{% if submit_label == blank %}{% assign submit_label = 'Send message' %}{% endif %}
+
+<section
+  id="{{ widget.id }}"
+  class="widget widget-core-form widget-{{ widget.id }} color-scheme-{{ widget.settings.color_scheme }} form-style-{{ widget.settings.style }}{% if has_sidebar_blocks and widget.settings.sidebar_position == 'start' %} layout-reverse{% endif %}{% if widget.settings.top_spacing != 'auto' %} spacing-top-{{ widget.settings.top_spacing }}{% endif %}{% if widget.settings.bottom_spacing != 'auto' %} spacing-bottom-{{ widget.settings.bottom_spacing }}{% endif %}"
+  {% unless widget.settings.color_scheme == 'standard-primary' %}
+    style="--widget-bg-color: var(--bg-primary);"
+  {% endunless %}
+  data-widget-id="{{ widget.id }}"
+  data-widget-type="core-form"
+  {% if widget.index != null %}data-widget-index="{{ widget.index }}"{% endif %}
+>
+  <style>
+    .widget-{{ widget.id }} {
+      & .form-content-wrapper {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--space-lg);
+      }
+
+      & .form-form {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-md);
+      }
+
+      & .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-xs);
+      }
+
+      & .form-label {
+        display: inline-flex;
+        align-items: baseline;
+        gap: var(--space-2xs);
+        font-size: calc(var(--font-size-sm) * var(--body-scale));
+        font-weight: 500;
+        color: var(--text-heading);
+      }
+
+      & .form-required {
+        color: var(--accent);
+        font-weight: 500;
+      }
+
+      & .form-input,
+      & .form-textarea,
+      & .form-select {
+        width: 100%;
+        padding: var(--space-sm) var(--space-md);
+        background-color: var(--bg-primary);
+        color: var(--text-content);
+        border: var(--border-width-thin) solid var(--border-color);
+        border-radius: var(--radius-sm);
+        font-family: inherit;
+        font-size: calc(var(--font-size-base) * var(--body-scale));
+        line-height: 1.5;
+        transition:
+          border-color var(--transition-speed-fast),
+          box-shadow var(--transition-speed-fast);
+      }
+
+      & .form-textarea {
+        min-height: 12rem;
+        resize: vertical;
+      }
+
+      & .form-select {
+        appearance: none;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+        background-repeat: no-repeat;
+        background-position: right var(--space-md) center;
+        background-size: 1.4rem;
+        padding-inline-end: calc(var(--space-md) * 2 + 1.4rem);
+      }
+
+      &.color-scheme-standard-secondary,
+      &.color-scheme-highlight-secondary {
+        & .form-input,
+        & .form-textarea,
+        & .form-select {
+          background-color: var(--bg-secondary);
+        }
+      }
+
+      & .form-input:focus-visible,
+      & .form-textarea:focus-visible,
+      & .form-select:focus-visible {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+      }
+
+      & .form-fieldset {
+        border: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-xs);
+      }
+
+      & .form-fieldset .form-label {
+        margin-block-end: var(--space-xs);
+      }
+
+      & .form-radio,
+      & .form-consent {
+        display: inline-flex;
+        align-items: flex-start;
+        gap: var(--space-sm);
+        font-size: calc(var(--font-size-sm) * var(--body-scale));
+        color: var(--text-content);
+        cursor: pointer;
+      }
+
+      & .form-radio input[type="radio"],
+      & .form-consent input[type="checkbox"] {
+        margin: 0.2rem 0 0 0;
+        accent-color: var(--accent);
+        flex-shrink: 0;
+      }
+
+      & .form-honeypot {
+        position: absolute;
+        left: -9999px;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      & .form-turnstile:not(:empty) {
+        margin-block-start: var(--space-xs);
+      }
+
+      & .form-status {
+        margin: 0;
+        font-size: calc(var(--font-size-sm) * var(--body-scale));
+        color: var(--text-content);
+        min-height: 1.5em;
+      }
+
+      & .form-status:empty {
+        display: none;
+      }
+
+      & .form-submit {
+        align-self: flex-start;
+        margin-block-start: var(--space-xs);
+      }
+
+      & .form-info {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-xl);
+      }
+
+      & .form-info-block {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-sm);
+      }
+
+      /* Underlined variant */
+      &.form-style-underlined {
+        & .form-input,
+        & .form-textarea,
+        & .form-select {
+          border-width: 0;
+          border-block-end: var(--border-width-thin) solid var(--border-color);
+          border-radius: 0;
+          background-color: transparent;
+          padding-inline: 0;
+        }
+
+        & .form-select {
+          background-position: right 0 center;
+          padding-inline-end: calc(1.4rem + var(--space-sm));
+        }
+
+        & .form-input:focus-visible,
+        & .form-textarea:focus-visible,
+        & .form-select:focus-visible {
+          border-color: var(--accent);
+          box-shadow: 0 1px 0 0 var(--accent);
+        }
+      }
+
+      @media (min-width: 750px) {
+        & .form-content-wrapper:not(.no-sidebar) {
+          grid-template-columns: 7fr 3fr;
+          gap: var(--space-3xl);
+        }
+
+        &.layout-reverse .form-content-wrapper:not(.no-sidebar) {
+          grid-template-columns: 3fr 7fr;
+        }
+
+        &.layout-reverse .form-main {
+          order: 2;
+        }
+
+        &.layout-reverse .form-info {
+          order: 1;
+        }
+      }
+    }
+  </style>
+
+  <div class="widget-container {% unless widget.settings.color_scheme == 'standard-primary' %}widget-container-padded{% endunless %}">
+    {% if widget.settings.title != blank or widget.settings.description != blank or widget.settings.eyebrow != blank %}
+      <div class="widget-header{% if widget.settings.heading_alignment == 'start' %} widget-header--align-start{% endif %}">
+        {% assign header_delay = 0 %}
+        {% if widget.settings.eyebrow != blank %}
+          <span class="w-eyebrow{% if widget.settings.eyebrow_uppercase %} t-uppercase{% endif %} reveal reveal-up" style="--reveal-delay: {{ header_delay }}" data-setting="eyebrow">{{ widget.settings.eyebrow }}</span>
+          {% assign header_delay = header_delay | plus: 1 %}
+        {% endif %}
+        {% if widget.settings.title != blank %}
+          {% if widget.index == 1 %}
+            <h1 class="w-headline reveal reveal-up" style="--reveal-delay: {{ header_delay }}" data-setting="title">{{ widget.settings.title }}</h1>
+          {% else %}
+            <h2 class="w-headline reveal reveal-up" style="--reveal-delay: {{ header_delay }}" data-setting="title">{{ widget.settings.title }}</h2>
+          {% endif %}
+          {% assign header_delay = header_delay | plus: 1 %}
+        {% endif %}
+        {% if widget.settings.description != blank %}
+          <p class="w-description reveal reveal-up" style="--reveal-delay: {{ header_delay }}" data-setting="description">{{ widget.settings.description }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div class="widget-content {% unless has_sidebar_blocks %}widget-content-md{% endunless %}">
+      <div class="form-content-wrapper {% unless has_sidebar_blocks %}no-sidebar{% endunless %}">
+        <div class="form-main">
+          <form
+            class="form-form"
+            data-widgetizer-form="{{ form_key }}"
+            action="/__widgetizer/forms/{{ form_key }}"
+            method="post"
+          >
+            {% for blockId in widget.blocksOrder %}
+              {% assign block = widget.blocks[blockId] %}
+              {% assign field_id = 'form-' | append: widget.id | append: '-' | append: blockId %}
+              {% assign field_key = block.settings.label | handleize | truncate: 64, '' %}
+
+              {% case block.type %}
+              {% when 'field' %}
+                <div class="form-field reveal reveal-up" style="--reveal-delay: {{ forloop.index0 }}" data-block-id="{{ blockId }}">
+                  <label class="form-label" for="{{ field_id }}">
+                    <span data-setting="label">{{ block.settings.label }}</span>
+                    {% if block.settings.required %}<span class="form-required" aria-hidden="true">*</span>{% endif %}
+                  </label>
+                  {% if block.settings.type == 'textarea' %}
+                    <textarea
+                      id="{{ field_id }}"
+                      name="{{ field_key }}"
+                      class="form-input form-textarea"
+                      rows="5"
+                      {% if block.settings.placeholder != blank %}placeholder="{{ block.settings.placeholder }}"{% endif %}
+                      {% if block.settings.required %}required aria-required="true"{% endif %}
+                    ></textarea>
+                  {% else %}
+                    {% assign input_type = block.settings.type | default: 'text' %}
+                    <input
+                      type="{{ input_type }}"
+                      id="{{ field_id }}"
+                      name="{{ field_key }}"
+                      class="form-input"
+                      {% if block.settings.placeholder != blank %}placeholder="{{ block.settings.placeholder }}"{% endif %}
+                      {% if block.settings.required %}required aria-required="true"{% endif %}
+                    />
+                  {% endif %}
+                </div>
+
+              {% when 'choice' %}
+                <div class="form-field reveal reveal-up" style="--reveal-delay: {{ forloop.index0 }}" data-block-id="{{ blockId }}">
+                  {% assign options_lines = block.settings.options | newline_to_br | split: '<br />' %}
+                  {% if block.settings.type == 'radio' %}
+                    <fieldset class="form-fieldset">
+                      <legend class="form-label">
+                        <span data-setting="label">{{ block.settings.label }}</span>
+                        {% if block.settings.required %}<span class="form-required" aria-hidden="true">*</span>{% endif %}
+                      </legend>
+                      {% for option_line in options_lines %}
+                        {% assign option_label = option_line | strip %}
+                        {% if option_label != blank %}
+                          {% assign option_value = option_label | handleize | truncate: 200, '' %}
+                          <label class="form-radio">
+                            <input
+                              type="radio"
+                              name="{{ field_key }}"
+                              value="{{ option_value }}"
+                              {% if block.settings.required %}required aria-required="true"{% endif %}
+                            />
+                            <span>{{ option_label }}</span>
+                          </label>
+                        {% endif %}
+                      {% endfor %}
+                    </fieldset>
+                  {% else %}
+                    <label class="form-label" for="{{ field_id }}">
+                      <span data-setting="label">{{ block.settings.label }}</span>
+                      {% if block.settings.required %}<span class="form-required" aria-hidden="true">*</span>{% endif %}
+                    </label>
+                    <select
+                      id="{{ field_id }}"
+                      name="{{ field_key }}"
+                      class="form-input form-select"
+                      {% if block.settings.required %}required aria-required="true"{% endif %}
+                    >
+                      <option value="">{{ block.settings.placeholder | default: 'Select an option' }}</option>
+                      {% for option_line in options_lines %}
+                        {% assign option_label = option_line | strip %}
+                        {% if option_label != blank %}
+                          {% assign option_value = option_label | handleize | truncate: 200, '' %}
+                          <option value="{{ option_value }}">{{ option_label }}</option>
+                        {% endif %}
+                      {% endfor %}
+                    </select>
+                  {% endif %}
+                </div>
+
+              {% when 'consent' %}
+                <label class="form-consent reveal reveal-up" style="--reveal-delay: {{ forloop.index0 }}" data-block-id="{{ blockId }}">
+                  <input
+                    type="checkbox"
+                    name="{{ field_key }}"
+                    value="true"
+                    {% if block.settings.required %}required aria-required="true"{% endif %}
+                  />
+                  <span data-setting="label">{{ block.settings.label }}</span>
+                  {% if block.settings.required %}<span class="form-required" aria-hidden="true">*</span>{% endif %}
+                </label>
+              {% endcase %}
+            {% endfor %}
+
+            <input
+              type="text"
+              name="website"
+              tabindex="-1"
+              autocomplete="off"
+              aria-hidden="true"
+              class="form-honeypot"
+              data-widgetizer-honeypot
+            />
+
+            <div class="form-turnstile" data-widgetizer-turnstile></div>
+
+            <p class="form-status" data-widgetizer-form-status aria-live="polite"></p>
+
+            <button type="submit" class="widget-button widget-button-primary form-submit">
+              {{ submit_label }}
+            </button>
+          </form>
+        </div>
+
+        {% if has_sidebar_blocks %}
+          <div class="form-info">
+            {% for blockId in widget.blocksOrder %}
+              {% assign block = widget.blocks[blockId] %}
+              {% if block.type == 'info' %}
+                <div class="form-info-block" data-block-id="{{ blockId }}">
+                  {% if block.settings.title != blank %}
+                    <h3 class="w-title t-xl" data-setting="title">{{ block.settings.title }}</h3>
+                  {% endif %}
+                  {% if block.settings.text != blank %}
+                    <div class="w-body w-rte" data-setting="text">{{ block.settings.text | raw }}</div>
+                  {% endif %}
+                </div>
+              {% elsif block.type == 'social' %}
+                <div class="social-links" data-block-id="{{ blockId }}">
+                  {% render 'social-icons', social: theme.social %}
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
