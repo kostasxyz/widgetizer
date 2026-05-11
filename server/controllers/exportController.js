@@ -12,6 +12,7 @@ import * as projectRepo from "../db/repositories/projectRepository.js";
 import { formatHtml, formatXml, validateHtml, generateIssuesReport } from "../utils/htmlProcessor.js";
 import { preprocessThemeSettings } from "../utils/themeHelpers.js";
 import { generateExportSiteIcons } from "../utils/siteIconHelpers.js";
+import { buildFormsManifest } from "../services/formsManifestService.js";
 import TurndownService from "turndown";
 import * as exportRepo from "../db/repositories/exportRepository.js";
 
@@ -640,9 +641,10 @@ Per aspera ad astra
     // --- End File Asset Copy ---
 
     // Write manifest.json with export metadata
+    const appVersionForManifest = await getAppVersion();
     const manifest = {
       generator: "widgetizer",
-      widgetizerVersion: await getAppVersion(),
+      widgetizerVersion: appVersionForManifest,
       themeId: projectData.theme,
       themeVersion: projectData.themeVersion || null,
       exportVersion: version,
@@ -650,6 +652,23 @@ Per aspera ad astra
       projectName: projectData.name,
     };
     await fs.writeFile(path.join(outputDir, "manifest.json"), JSON.stringify(manifest, null, 2));
+
+    // Write widgetizer.forms.json if the project contains any core-form widgets.
+    // Validation errors throw with statusCode 400 and are surfaced by the request handler.
+    const { manifest: formsManifest, warnings: formsWarnings } = buildFormsManifest(
+      pagesDataArray,
+      appVersionForManifest,
+    );
+    for (const warning of formsWarnings) {
+      console.warn(`[forms manifest] ${warning}`);
+    }
+    if (formsManifest) {
+      await fs.writeFile(
+        path.join(outputDir, "widgetizer.forms.json"),
+        JSON.stringify(formsManifest, null, 2),
+      );
+      console.log(`Wrote widgetizer.forms.json with ${formsManifest.forms.length} form(s)`);
+    }
 
     // Record this export in history (store relative dir name, not absolute path)
     const exportDirName = `${projectFolderName}-v${version}`;

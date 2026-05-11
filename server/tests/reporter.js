@@ -47,6 +47,7 @@ const FILE_GROUPS = {
   "preview.test.js": "Editor & Preview",
   "maxBlocks.test.js": "Editor & Preview",
   "export.test.js": "Export & Distribution",
+  "formsManifest.test.js": "Export & Distribution",
   "appSettings.test.js": "Platform & Settings",
   "infrastructure.test.js": "Platform & Settings",
   "projectMismatchGuard.test.js": "Platform & Settings",

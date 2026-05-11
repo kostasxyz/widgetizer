@@ -1,4 +1,86 @@
 {
+  "global": {
+    "widgets": {
+      "settings": {
+        "content_header": {
+          "label": "Content"
+        },
+        "display_header": {
+          "label": "Display"
+        },
+        "appearance_header": {
+          "label": "Appearance"
+        },
+        "eyebrow": {
+          "label": "Eyebrow text"
+        },
+        "eyebrow_uppercase": {
+          "label": "Uppercase"
+        },
+        "title": {
+          "label": "Heading"
+        },
+        "description": {
+          "label": "Subheading"
+        },
+        "alignment": {
+          "label": "Alignment",
+          "options": {
+            "start": "Start",
+            "center": "Center"
+          }
+        },
+        "sidebar_position": {
+          "label": "Sidebar position"
+        },
+        "options": {
+          "start": "Start",
+          "end": "End"
+        },
+        "color_scheme": {
+          "label": "Color Scheme",
+          "options": {
+            "standard_primary": "Standard Primary",
+            "standard_secondary": "Standard Secondary",
+            "highlight_primary": "Highlight Primary",
+            "highlight_secondary": "Highlight Secondary"
+          }
+        },
+        "top_spacing": {
+          "label": "Top spacing",
+          "options": {
+            "auto": "Auto",
+            "small": "Small",
+            "none": "None"
+          }
+        },
+        "bottom_spacing": {
+          "label": "Bottom spacing",
+          "options": {
+            "auto": "Auto",
+            "small": "Small",
+            "none": "None"
+          }
+        }
+      },
+      "blocks": {
+        "info": {
+          "name": "Info",
+          "settings": {
+            "title": {
+              "label": "Title"
+            },
+            "text": {
+              "label": "Text"
+            }
+          }
+        },
+        "social": {
+          "name": "Social Icons"
+        }
+      }
+    }
+  },
   "core_divider": {
     "name": "Divider",
     "description": "Add a horizontal divider line",
@@ -38,6 +120,94 @@
       "mobileHeight": {
         "label": "Mobile Height",
         "description": "The height of the spacer on mobile devices in pixels"
+      }
+    }
+  },
+  "core_form": {
+    "name": "Form",
+    "description": "Collect inquiries through a form that submits to Widgetizer Hosting",
+    "category": "Forms",
+    "settings": {
+      "form_header": {
+        "label": "Form",
+        "description": "This widget only works on sites deployed to Widgetizer Hosting. Coming soon."
+      },
+      "form_name": {
+        "label": "Form name",
+        "description": "Identifies this form in the hosting dashboard. Use a unique name for each form on your site. Changing this after publishing creates a new dashboard entry."
+      },
+      "submit_label": {
+        "label": "Submit button label"
+      },
+      "style": {
+        "label": "Field style",
+        "options": {
+          "outlined": "Outlined",
+          "underlined": "Underlined"
+        }
+      }
+    },
+    "blocks": {
+      "field": {
+        "name": "Field",
+        "settings": {
+          "label": {
+            "label": "Field label"
+          },
+          "type": {
+            "label": "Field type",
+            "options": {
+              "text": "Short text",
+              "email": "Email address",
+              "tel": "Phone number",
+              "url": "Web address",
+              "textarea": "Long text"
+            }
+          },
+          "placeholder": {
+            "label": "Placeholder"
+          },
+          "required": {
+            "label": "Required"
+          }
+        }
+      },
+      "choice": {
+        "name": "Choice field",
+        "settings": {
+          "label": {
+            "label": "Field label"
+          },
+          "type": {
+            "label": "Display as",
+            "options": {
+              "select": "Dropdown",
+              "radio": "Radio buttons"
+            }
+          },
+          "options": {
+            "label": "Options",
+            "description": "One option per line. Up to 50 options."
+          },
+          "placeholder": {
+            "label": "Dropdown placeholder",
+            "description": "Shown as the first option of a dropdown when nothing is selected"
+          },
+          "required": {
+            "label": "Required"
+          }
+        }
+      },
+      "consent": {
+        "name": "Consent checkbox",
+        "settings": {
+          "label": {
+            "label": "Consent label"
+          },
+          "required": {
+            "label": "Must be checked to submit"
+          }
+        }
       }
     }
   }
