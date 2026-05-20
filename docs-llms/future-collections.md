@@ -141,6 +141,12 @@ themes/arch/
       "type": "textarea",
       "id": "seo_description",
       "label": "tTheme:collections.portfolio.settings.seo_description.label"
+    },
+    {
+      "type": "checkbox",
+      "id": "seo_noindex",
+      "label": "tTheme:collections.portfolio.settings.seo_noindex.label",
+      "default": false
     }
   ]
 }
@@ -170,6 +176,8 @@ Existing setting types are reused, with two new optional flags:
 
 - `usedAsTitle: true` — marks the field whose value should be used as the item's display name in listings and as the source for auto-generated slugs. Exactly one field per collection should have this.
 - `required: true` — already supported in some setting types; collections enforce it on save.
+
+Phase 2 item-page SEO uses a simple field convention: if a schema includes a checkbox setting with `id: "seo_noindex"`, export treats `true` as `noindex,follow`, excludes that item from `sitemap.xml`, and adds its output path to `robots.txt`.
 
 #### Schema Validation Rules
 
@@ -235,7 +243,8 @@ data/projects/my-site/
       "target": "_blank"
     },
     "seo_title": "Project Alpha | My Portfolio",
-    "seo_description": "Case study of Project Alpha..."
+    "seo_description": "Case study of Project Alpha...",
+    "seo_noindex": false
   }
 }
 ```
@@ -248,7 +257,12 @@ data/projects/my-site/
 }
 ```
 
-Items not in `_order.json` fall back to `defaultSort`. The underscore prefix prevents the file from being mistaken for an item slug.
+The underscore prefix prevents `_order.json` from being mistaken for an item slug. Ordering rules:
+
+- If `defaultSort` is not `manual`, list views and Liquid queries use that sort and `_order.json` is ignored.
+- If `defaultSort` is `manual`, slugs listed in `_order.json` appear first in that order.
+- Manual-order items missing from `_order.json` are appended after ordered items, sorted by `created_desc`. This covers newly-created items before the user has reordered anything.
+- Stale slugs in `_order.json` are ignored on read and pruned the next time order is written, items are deleted, or items are bulk-deleted.
 
 `id` is the current item slug and changes when the item is renamed. Phase 1 does not add a stable item UUID because no v1 feature references collection items independently from their slug. If Phase 3 relationships need stable identity, add `uuid` then and backfill existing item files as part of that feature.
 
@@ -262,7 +276,8 @@ To avoid collisions when `hasItemPages: true`:
 2. **Cross-collection prefix uniqueness**: two collections cannot share the same `slugPrefix`. Enforced at theme load time.
 3. **Reserved prefixes**: `slugPrefix` cannot use export-owned directories like `assets`.
 4. **Slug generation**: item slugs are auto-generated from the `usedAsTitle` field; user can override. Validated as `^[a-z0-9-]+$`.
-5. **Slug edits**: renaming an item slug renames the JSON file, rewrites the `_order.json` entry, and removes the old `collection:{type}/{oldSlug}` media-usage source. Liquid list queries pick up the new slug on the next render; hard-coded slug links in templates or content are not rewritten in v1.
+5. **Slug uniqueness**: before create or rename, check whether `data/projects/{folderName}/collections/{type}/{slug}.json` already exists. Updates may keep their current slug, but a new target slug that belongs to another item must return a validation/conflict error instead of overwriting that file.
+6. **Slug edits**: renaming an item slug renames the JSON file, rewrites the `_order.json` entry, and removes the old `collection:{type}/{oldSlug}` media-usage source. Liquid list queries pick up the new slug on the next render; hard-coded slug links in templates or content are not rewritten in v1.
 
 Page slugs and item slugs are **not** in the same namespace — items always export beneath `{slugPrefix}/`, so a page slugged `about` and a portfolio item slugged `about` coexist as `about.html` and `portfolio/about.html`. Collision checks operate on full output paths, not raw item slugs. A page slug can match a collection `slugPrefix` in v1 (`portfolio.html` plus `portfolio/project-alpha.html`) because the static export writes `.html` files; the implementation must still reserve real output directories such as `assets/` and ensure collection prefixes are unique across collection types.
 
@@ -357,6 +372,8 @@ Concrete `mediaUsageService.js` changes:
 - Add `syncCollectionItemMediaUsageOnWrite(projectId, collectionType, itemSlug, itemData, previousItemSlug = null)` so slug renames remove the old source before writing the new one.
 - Extend `refreshAllMediaUsage(projectId)` and `refreshMediaUsageAfterStructuralChange()` to scan `data/projects/{folderName}/collections/*/*.json` in addition to pages, globals, and theme settings. This is required for project import, project duplication, project creation from theme templates, and theme updates.
 
+`projectController.js` and `themeUpdateService.js` already call `refreshMediaUsageAfterStructuralChange()` after project creation, project duplication, project import, and applying a theme update. Do not add duplicate refresh calls for collections; make those existing structural refresh paths complete by teaching `refreshAllMediaUsage()` to include collection item files.
+
 ---
 
 ### 7. Server-Side Implementation
@@ -403,10 +420,11 @@ Keep most filesystem/schema logic in a service so Liquid, export, and HTTP handl
 | `getCollectionSchema(projectFolderName, collectionType)` | Return one validated schema or throw a 404-style error. |
 | `listCollectionItems(projectFolderName, collectionType, options)` | Read item JSON files, apply schema defaults/normalization in memory, compute `title`, `invalid`, and `validationErrors`, then sort. |
 | `readCollectionItem(projectFolderName, collectionType, itemSlug)` | Read and normalize one item. |
-| `buildCollectionItemData(schema, input, existingItem)` | Apply defaults, preserve `created`, generate or sanitize slug, sanitize settings, validate required fields, and return `{ item, previousSlug }`. |
-| `writeCollectionItem(projectId, projectFolderName, collectionType, item, previousSlug)` | Atomically write JSON, rename/delete old slug file when needed, update `_order.json`, and sync media usage. |
+| `buildCollectionItemData(schema, input, existingItem)` | Apply defaults, preserve `created`, generate or sanitize slug, sanitize settings, enforce required fields, and return `{ item, previousSlug }`. |
+| `writeCollectionItem(projectId, projectFolderName, collectionType, item, previousSlug)` | Check slug uniqueness, atomically write JSON, rename/delete old slug file when needed, update `_order.json`, and sync media usage. |
 | `deleteCollectionItem(projectId, projectFolderName, collectionType, itemSlug)` | Delete JSON, remove `_order.json` entry, and remove media usage source. |
-| `duplicateCollectionItem(...)` | Copy settings, copy-suffix title, generate a unique slug, reset timestamps, and media usage. |
+| `bulkDeleteCollectionItems(projectId, projectFolderName, collectionType, itemSlugs)` | Delete matching JSON files, remove all deleted slugs from `_order.json` in one pass, and remove media usage sources. |
+| `duplicateCollectionItem(...)` | Copy settings, copy-suffix title, generate a unique slug, reset timestamps, sync media usage, and insert the duplicate slug immediately after the source slug in `_order.json` when present. If the source slug is not in `_order.json`, append the duplicate under the manual-order fallback rules. |
 | `loadCollectionTemplate(projectFolderName, collectionType)` | Phase 2: read `template.liquid` from the project `collection-types/` copy. |
 
 Use `sanitizeSlug()`/`generateUniqueSlug()` from `server/utils/slugHelpers.js`; do not duplicate slug rules in the controller.
@@ -494,6 +512,8 @@ The sidebar dynamically shows collection types available in the active project's
 
 Keep `src/config/navigation.js` as the static base navigation. In `Sidebar.jsx`, load collection schemas for the active project and insert collection links into the existing "Site" section after Pages (or after Menus if that feels better in the final UI). This matches the current sidebar architecture, where `navigationSections` is static and project-aware behavior lives in the component.
 
+`Sidebar.jsx` currently renders labels with `t(item.labelKey)` and has no badge rendering. Add a small adapter in `Sidebar.jsx` so nav items may provide either a translated `label` or a `labelKey`, plus an optional numeric `badge`.
+
 ```jsx
 const collectionsNav = collections.map((col) => ({
   id: `collection-${col.type}`,
@@ -504,6 +524,8 @@ const collectionsNav = collections.map((col) => ({
   badge: col.itemCount ?? 0,
 }));
 ```
+
+Then update `renderNavItem` to derive the visible label as `item.label ?? t(item.labelKey)` and render a compact badge when `typeof item.badge === "number"`. Static nav items continue to use `labelKey`; collection nav items use the already-resolved theme label from `useThemeLocale`.
 
 **Empty-state UX**: collections with zero items still appear in the sidebar with a `0` badge so users discover them and know where to add content. Hiding empty collections makes them feel hidden/broken.
 
@@ -589,9 +611,13 @@ Implementation target:
 
 - Add `src/core/filters/collectionFilter.js` exporting `registerCollectionFilter(engine)`, following the existing `mediaMetaFilter.js` and `handleizeFilter.js` pattern.
 - Import and call `registerCollectionFilter(engine)` inside `configureLiquidEngine()` in `server/services/renderingService.js`.
-- The filter should read `projectId` and the shared render globals from `this.context.globals` / the Liquid context. It must not accept a project ID from template input.
-- Use `collectionService.listCollectionItems(projectFolderName, collectionType, options)` so Liquid, API, and export sorting/default behavior stays identical.
+- Keep `collectionFilter.js` dependency-light and shared-safe. It lives under `src/core/`, so it must not import `server/services/collectionService.js` or any backend-only module.
+- In `renderingService.js`, attach an async loader callback to Liquid globals, for example `globals.getCollectionItems = async (collectionType, options) => collectionService.listCollectionItems(projectFolderName, collectionType, options)`.
+- The filter should read `projectId`, `renderMode`, and `getCollectionItems` from `this.context.globals` / the Liquid context. It must not accept a project ID from template input.
+- The filter calls `globals.getCollectionItems(collectionType, options)` asynchronously. If the callback is missing, return an empty array and log a warning in development rather than importing backend code from `src/core`.
+- The loader callback should delegate to `collectionService.listCollectionItems(projectFolderName, collectionType, options)` so Liquid, API, and export sorting/default behavior stays identical.
 - LiquidJS named filter arguments arrive as filter args, so normalize both named-style calls (`collection: limit: 6, sort: 'created_desc'`) and positional fallback if LiquidJS supplies argument tuples.
+- The filter excludes `invalid: true` items by default, matching export's refusal to publish invalid collection items. In developer mode, emit a warning listing skipped collection type/slug values so theme authors can spot missing required data during preview/export testing. No `includeInvalid` option ships in v1.
 
 #### Scope and Sandbox
 
@@ -658,10 +684,10 @@ Update `exportController.js` to:
 2. Loop through each collection type where `hasItemPages: true`.
 3. Fail export if any item in those collections is `invalid: true`, listing collection type, slug, and missing fields.
 4. For each valid item, render the collection `template.liquid` with a context containing `item`, `collection`, `page`, `project`, `theme`, `imagePath`, `filePath`, and the same shared globals used by page export.
-5. Render that item template into the existing layout with `renderPageLayout()`, treating the item as a page-like object with `id: "{slugPrefix}-{slug}"`, `slug: "{slugPrefix}-{slug}"`, `name` from the `usedAsTitle` field, `seo.title` from `seo_title`, `seo.description` from `seo_description`, and `updated`. Do not change `renderPageLayout()` for collection paths; keep the body class safe at the call site. If the project has a valid `siteUrl`, set `seo.canonical_url` explicitly to `{siteUrl}/{slugPrefix}/{itemSlug}.html` so canonical URLs still match the real output path.
+5. Render that item template into the existing layout with `renderPageLayout()`, treating the item as a page-like object with `id: "{slugPrefix}-{slug}"`, `slug: "{slugPrefix}-{slug}"`, `name` from the `usedAsTitle` field, `seo.title` from `seo_title`, `seo.description` from `seo_description`, `seo.robots` from `seo_noindex ? "noindex,follow" : "index,follow"`, and `updated`. Do not change `renderPageLayout()` for collection paths; keep the body class safe at the call site. If the project has a valid `siteUrl`, set `seo.canonical_url` explicitly to `{siteUrl}/{slugPrefix}/{itemSlug}.html` so canonical URLs still match the real output path.
 6. Format, validate, rewrite `/uploads/images/` and `/uploads/files/`, and prepend the Widgetizer export comment using the same page-export code path.
 7. Output to `{slugPrefix}/{item-slug}.html`.
-8. Include collection item URLs in `sitemap.xml` unless the schema later adds a noindex field. If collection SEO fields are blank, fall back to the item title and project title composition.
+8. Include collection item URLs in `sitemap.xml` unless the page-like collection object has `seo.robots?.includes("noindex")`, reusing the same predicate as normal pages. Collection items are not merged into `pagesDataArray`; export builds a separate collection-item URL/disallow list and concatenates it into the sitemap/robots arrays before writing. For noindex items, omit the URL from the sitemap and add `/{slugPrefix}/{itemSlug}.html` to `robots.txt` `Disallow` rules, matching the page export behavior. If collection SEO fields are blank, fall back to the item title and project title composition.
 9. Validate full output path collisions before writing. Pages currently produce `index.html` or `{pageSlug}.html`; collection items produce `{slugPrefix}/{itemSlug}.html`.
 
 ---
@@ -718,7 +744,7 @@ Collections with `hasItemPages: false` contribute no HTML — their data is only
 | `server/services/renderingService.js`    | Register `collection` Liquid filter (Phase 1)    |
 | `server/controllers/exportController.js` | Export collection item pages (Phase 2)           |
 | `src/App.jsx`                            | Add collection routes                            |
-| `src/components/layout/Sidebar.jsx`      | Dynamic collection nav items                     |
+| `src/components/layout/Sidebar.jsx`      | Dynamic collection nav items, pre-translated labels, and numeric badges |
 | `src/locales/en/translation.json`        | Add collection translation keys                  |
 | `server/tests/mediaUsage.test.js`        | Add collection media usage refresh/write cases   |
 | `server/tests/export.test.js`            | Add collection item page export cases            |
