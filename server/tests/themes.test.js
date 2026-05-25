@@ -230,7 +230,7 @@ before(async () => {
   await fs.ensureDir(TEST_THEMES_DIR);
   await fs.ensureDir(TEST_DATA_DIR);
 
-  // projects.json with a project using a specific theme
+  // Seed a project using a specific theme
   await projectRepo.writeProjectsData({
     projects: [
       {

@@ -173,7 +173,7 @@ function getLatestExportDir() {
 
 before(async () => {
   // -----------------------------------------------------------
-  // 1. projects.json with test project
+  // 1. Seed test project in the DB
   // -----------------------------------------------------------
   await projectRepo.writeProjectsData(
     {

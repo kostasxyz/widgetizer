@@ -113,7 +113,7 @@ before(async () => {
     created: new Date().toISOString(),
   };
 
-  // Write projects.json so controllers can find the active project
+  // Seed projects in the test DB so controllers can find the active project
   await projectRepo.writeProjectsData({
     projects: [activeProject],
     activeProjectId: activeProject.id,

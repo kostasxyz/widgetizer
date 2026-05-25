@@ -118,7 +118,7 @@ function defaultMediaFiles() {
 // ============================================================================
 
 before(async () => {
-  // Write projects.json
+  // Seed projects in the test DB
   await projectRepo.writeProjectsData({
     projects: [
       {
