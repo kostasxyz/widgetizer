@@ -121,6 +121,10 @@ npm run electron:dev   # Starts Vite + Express + Electron together
 
 Note: the `preelectron:dev` npm lifecycle hook runs automatically before `electron:dev`, rebuilding `better-sqlite3` for the installed Electron runtime and validating locales. No need to run those by hand.
 
+### Server port (production)
+
+The packaged app's bundled Express server prefers port `3001`, but falls back to an OS-assigned ephemeral port if `3001` is already in use (e.g., another dev server is running on the user's machine). Set the `PORT` env var to force a specific port. The renderer URL is derived from whichever port was resolved, so no other config needs to change.
+
 ### Building Installers
 
 Mac (run on Mac):

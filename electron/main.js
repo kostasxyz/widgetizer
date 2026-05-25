@@ -4,6 +4,7 @@ const { autoUpdater } = pkg;
 import fs from "fs";
 import path from "path";
 import http from "http";
+import net from "net";
 import { fileURLToPath } from "url";
 
 // Constants
@@ -27,7 +28,56 @@ let dataRoot = null;
 let themesRoot = null;
 let logsDir = null;
 
-const serverPort = process.env.PORT || DEFAULT_PORT;
+let serverPort = process.env.PORT || DEFAULT_PORT;
+
+// Probe a port on 127.0.0.1 to see if we can bind to it.
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const tester = net.createServer();
+    tester.unref();
+    tester.once("error", () => resolve(false));
+    tester.listen({ port, host: "127.0.0.1", exclusive: true }, () => {
+      tester.close(() => resolve(true));
+    });
+  });
+}
+
+// Ask the OS for an available ephemeral port on 127.0.0.1.
+function pickEphemeralPort() {
+  return new Promise((resolve, reject) => {
+    const tester = net.createServer();
+    tester.unref();
+    tester.once("error", reject);
+    tester.listen({ port: 0, host: "127.0.0.1", exclusive: true }, () => {
+      const { port } = tester.address();
+      tester.close(() => resolve(port));
+    });
+  });
+}
+
+// Resolve which port the bundled server should bind to.
+// Precedence: explicit PORT env var > DEFAULT_PORT (if free) > OS-assigned ephemeral.
+async function resolveServerPort() {
+  if (process.env.PORT) {
+    log(`Using PORT from environment: ${process.env.PORT}`);
+    return String(process.env.PORT);
+  }
+
+  const preferred = parseInt(DEFAULT_PORT, 10);
+  if (await isPortAvailable(preferred)) {
+    log(`Server port: ${preferred} (default)`);
+    return String(preferred);
+  }
+
+  try {
+    const fallback = await pickEphemeralPort();
+    log(`Server port: ${fallback} (default ${preferred} was in use)`);
+    return String(fallback);
+  } catch (err) {
+    log(`Failed to pick ephemeral port: ${err.message} — falling back to ${preferred}`);
+    return String(preferred);
+  }
+}
 
 // Determine if we're in development mode
 function getIsDev() {
@@ -825,6 +875,12 @@ app.whenReady().then(async () => {
 
     // Show a loading screen immediately
     showLoadingScreen();
+
+    // Resolve the server port before spawning — falls back to an OS-assigned
+    // port if the default is occupied by another local process.
+    if (process.env.ELECTRON_DISABLE_INTERNAL_SERVER !== "1") {
+      serverPort = await resolveServerPort();
+    }
 
     // Start server (non-blocking)
     startServer();
