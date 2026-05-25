@@ -304,7 +304,7 @@ describe("checkForUpdates", () => {
   });
 
   it("throws for nonexistent project", async () => {
-    // Create valid projects.json but without the target project
+    // Seed an empty project list — target project is intentionally absent
     await projectRepo.writeProjectsData({ projects: [], activeProjectId: null });
 
     await assert.rejects(
@@ -551,7 +551,7 @@ describe("applyThemeUpdate", () => {
     assert.deepEqual(banner.usedIn, ["gallery"]);
   });
 
-  it("updates project metadata in projects.json", async () => {
+  it("updates project metadata in the projects table", async () => {
     await createTheme("1.0.0", {
       updates: [{ version: "1.1.0", files: { "layout.liquid": "updated" } }],
     });

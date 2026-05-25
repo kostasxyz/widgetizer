@@ -962,7 +962,7 @@ export async function importProject(req, res) {
         }
       }
 
-      // Create new project object (but don't add to projects.json yet)
+      // Create new project object (DB insert happens later, after directory setup)
       newProject = {
         id: randomUUID(),
         folderName,
