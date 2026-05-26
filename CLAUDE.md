@@ -123,7 +123,7 @@ Note: the `preelectron:dev` npm lifecycle hook runs automatically before `electr
 
 ### Server port (production)
 
-The packaged app's bundled Express server prefers port `3001`, but falls back to an OS-assigned ephemeral port if `3001` is already in use (e.g., another dev server is running on the user's machine). Set the `PORT` env var to force a specific port. The renderer URL is derived from whichever port was resolved, so no other config needs to change.
+The packaged app's bundled Express server asks the OS for an ephemeral port at bind time (`PORT=0`) and reports the actual port back to the Electron main process via a `{ type: "server-ready", port }` message on the `utilityProcess` IPC channel. The renderer URL is built from that reported port, so two packaged apps (or a packaged app alongside a dev server) never collide. Set the `PORT` env var to force a specific port when needed.
 
 ### Building Installers
 

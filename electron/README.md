@@ -31,6 +31,6 @@ The four `electron:build:*` scripts are thin wrappers over `scripts/build-electr
 
 - Build output goes to `dist-electron/` at the repo root (gitignored).
 - The `preelectron:dev` npm lifecycle hook rebuilds `better-sqlite3` and validates locales before `electron:dev`.
-- The packaged app's bundled server prefers port `3001`, but probes for availability at startup and falls back to an OS-assigned ephemeral port if `3001` is taken. Set `PORT` to override. The renderer URL is built from the resolved port.
+- The packaged app's bundled server binds with `PORT=0` (OS-assigned ephemeral port) and reports the actual bound port back to the main process via a `{ type: "server-ready", port }` IPC message. The renderer URL uses that reported port. Set `PORT` to force a specific port.
 - macOS signing + notarization require `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` environment variables; the notarize hook prints these (masked) on run.
 - Windows signing uses a Certum/SimplySign certificate configured via `signtoolOptions` in `builder.config.mjs`.

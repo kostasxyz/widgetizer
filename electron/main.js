@@ -3,14 +3,11 @@ import pkg from "electron-updater";
 const { autoUpdater } = pkg;
 import fs from "fs";
 import path from "path";
-import http from "http";
-import net from "net";
 import { fileURLToPath } from "url";
 
 // Constants
 const DEFAULT_PORT = "3001";
 const SERVER_STARTUP_TIMEOUT_MS = 30000;
-const SERVER_POLL_INTERVAL_MS = 500;
 const DOCS_URL = "https://docs.widgetizer.org";
 
 // State
@@ -18,6 +15,7 @@ let mainWindow = null;
 let previewWindow = null;
 let serverProcess = null;
 let logFile = null;
+let serverReadyDeferred = null;
 
 // Paths - computed after app is ready
 let appRoot = null; // Path to app.asar (for Electron-loaded resources)
@@ -28,56 +26,10 @@ let dataRoot = null;
 let themesRoot = null;
 let logsDir = null;
 
-let serverPort = process.env.PORT || DEFAULT_PORT;
-
-// Probe a port on 127.0.0.1 to see if we can bind to it.
-function isPortAvailable(port) {
-  return new Promise((resolve) => {
-    const tester = net.createServer();
-    tester.unref();
-    tester.once("error", () => resolve(false));
-    tester.listen({ port, host: "127.0.0.1", exclusive: true }, () => {
-      tester.close(() => resolve(true));
-    });
-  });
-}
-
-// Ask the OS for an available ephemeral port on 127.0.0.1.
-function pickEphemeralPort() {
-  return new Promise((resolve, reject) => {
-    const tester = net.createServer();
-    tester.unref();
-    tester.once("error", reject);
-    tester.listen({ port: 0, host: "127.0.0.1", exclusive: true }, () => {
-      const { port } = tester.address();
-      tester.close(() => resolve(port));
-    });
-  });
-}
-
-// Resolve which port the bundled server should bind to.
-// Precedence: explicit PORT env var > DEFAULT_PORT (if free) > OS-assigned ephemeral.
-async function resolveServerPort() {
-  if (process.env.PORT) {
-    log(`Using PORT from environment: ${process.env.PORT}`);
-    return String(process.env.PORT);
-  }
-
-  const preferred = parseInt(DEFAULT_PORT, 10);
-  if (await isPortAvailable(preferred)) {
-    log(`Server port: ${preferred} (default)`);
-    return String(preferred);
-  }
-
-  try {
-    const fallback = await pickEphemeralPort();
-    log(`Server port: ${fallback} (default ${preferred} was in use)`);
-    return String(fallback);
-  } catch (err) {
-    log(`Failed to pick ephemeral port: ${err.message} — falling back to ${preferred}`);
-    return String(preferred);
-  }
-}
+// Resolved once the bundled server reports the port it actually bound to via
+// the "server-ready" IPC message. When the internal server is disabled, falls
+// back to the env/default port so the renderer can still target an external API.
+let serverPort = null;
 
 // Determine if we're in development mode
 function getIsDev() {
@@ -234,15 +186,22 @@ function startServer() {
     log(`Warning checking server entry: ${err.message}`);
   }
 
+  // PORT=0 → server asks the OS for an ephemeral port at bind time and reports
+  // it back via the "server-ready" message. Explicit PORT env still wins.
+  const requestedPort = process.env.PORT || "0";
+
   const env = {
     ...process.env,
     NODE_ENV: isDev ? "development" : "production",
-    PORT: serverPort,
+    PORT: requestedPort,
     DATA_ROOT: dataRoot,
     THEMES_ROOT: themesRoot,
     APP_ROOT: appRoot,
     UNPACKED_ROOT: unpackedRoot,
   };
+
+  // Set up the readiness deferred BEFORE forking so a fast server can't race us.
+  serverReadyDeferred = createDeferred();
 
   try {
     serverProcess = utilityProcess.fork(serverEntry, [], {
@@ -259,9 +218,20 @@ function startServer() {
       log(`[server stderr] ${data.toString().trim()}`);
     });
 
+    serverProcess.on("message", (msg) => {
+      if (msg && msg.type === "server-ready" && typeof msg.port === "number") {
+        serverPort = String(msg.port);
+        log(`Server reported ready on port ${serverPort}`);
+        serverReadyDeferred?.resolve();
+      }
+    });
+
     serverProcess.on("exit", (code) => {
       log(`Server process exited with code ${code}`);
       serverProcess = null;
+      // If the server died before reporting ready, fail the waiter so the user
+      // sees the startup error instead of hanging until the timeout.
+      serverReadyDeferred?.reject(new Error(`Server process exited with code ${code} before ready`));
     });
 
     // PID is available after the 'spawn' event fires
@@ -270,7 +240,31 @@ function startServer() {
     });
   } catch (err) {
     log(`Failed to spawn server process: ${err.message}`);
+    serverReadyDeferred?.reject(err);
   }
+}
+
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  let settled = false;
+  return {
+    promise,
+    resolve: (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    },
+    reject: (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    },
+  };
 }
 
 // Stop the server
@@ -282,56 +276,36 @@ function stopServer() {
   }
 }
 
-// Wait for server to be ready
+// Wait for the bundled server to report its bound port via IPC.
 function waitForServerReady() {
   if (process.env.ELECTRON_DISABLE_INTERNAL_SERVER === "1") {
     return Promise.resolve();
   }
 
-  log(`Waiting for server to be ready on port ${serverPort}...`);
+  if (!serverReadyDeferred) {
+    return Promise.reject(new Error("Server was not started"));
+  }
+
+  log("Waiting for server-ready message...");
   const startTime = Date.now();
 
   return new Promise((resolve, reject) => {
-    const check = () => {
-      const elapsed = Date.now() - startTime;
+    const timer = setTimeout(() => {
+      log(`Server startup timed out after ${Date.now() - startTime}ms`);
+      reject(new Error("Server startup timed out"));
+    }, SERVER_STARTUP_TIMEOUT_MS);
 
-      if (elapsed > SERVER_STARTUP_TIMEOUT_MS) {
-        log(`Server startup timed out after ${elapsed}ms`);
-        reject(new Error("Server startup timed out"));
-        return;
-      }
-
-      const req = http.get(
-        {
-          hostname: "127.0.0.1",
-          port: parseInt(serverPort, 10),
-          path: "/health",
-          timeout: SERVER_POLL_INTERVAL_MS,
-        },
-        (res) => {
-          res.resume();
-          if (res.statusCode === 200) {
-            log(`Server ready after ${elapsed}ms`);
-            resolve();
-          } else {
-            log(`Server returned status ${res.statusCode}, retrying...`);
-            setTimeout(check, SERVER_POLL_INTERVAL_MS);
-          }
-        },
-      );
-
-      req.on("error", () => {
-        // Server not ready yet, retry
-        setTimeout(check, SERVER_POLL_INTERVAL_MS);
-      });
-
-      req.on("timeout", () => {
-        req.destroy();
-        setTimeout(check, SERVER_POLL_INTERVAL_MS);
-      });
-    };
-
-    check();
+    serverReadyDeferred.promise.then(
+      () => {
+        clearTimeout(timer);
+        log(`Server ready after ${Date.now() - startTime}ms`);
+        resolve();
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
   });
 }
 
@@ -876,10 +850,11 @@ app.whenReady().then(async () => {
     // Show a loading screen immediately
     showLoadingScreen();
 
-    // Resolve the server port before spawning — falls back to an OS-assigned
-    // port if the default is occupied by another local process.
-    if (process.env.ELECTRON_DISABLE_INTERNAL_SERVER !== "1") {
-      serverPort = await resolveServerPort();
+    // When the internal server is disabled, the renderer targets an external
+    // API on this port. With the internal server enabled, serverPort is set
+    // later by the "server-ready" message.
+    if (process.env.ELECTRON_DISABLE_INTERNAL_SERVER === "1") {
+      serverPort = process.env.PORT || DEFAULT_PORT;
     }
 
     // Start server (non-blocking)
