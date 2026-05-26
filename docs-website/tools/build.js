@@ -22,6 +22,7 @@ const __dirname = path.dirname(__filename);
 const SRC_DIR = path.join(__dirname, "../src");
 const DIST_DIR = path.join(__dirname, "../dist");
 const ROOT_DIR = path.join(__dirname, "../..");
+const SITE_URL = "https://docs.widgetizer.org";
 
 // Read main package.json for version
 const packageJson = JSON.parse(await fs.readFile(path.join(ROOT_DIR, "package.json"), "utf-8"));
@@ -81,7 +82,7 @@ const githubIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="2
 // Generate navigation HTML
 function generateNav() {
   let html = '<nav class="sidebar">\n';
-  html += `  <a href="index.html" class="logo">\n`;
+  html += `  <a href="/" class="logo">\n`;
   html += `    <img src="${sitemap.logo}" alt="Widgetizer" />\n`;
   html += `  </a>\n`;
   html += `  <a href="https://widgetizer.org" class="back-to-site">\n`;
@@ -93,7 +94,7 @@ function generateNav() {
     if (item.type === "header") {
       html += `    <li class="nav-header">${item.title}</li>\n`;
     } else if (item.type === "page") {
-      const href = item.path.replace(".md", ".html");
+      const href = item.path === "index.md" ? "/" : "/" + item.path.replace(".md", "");
       const isActive = "{{ACTIVE_" + item.path + "}}";
       html += `    <li><a href="${href}" class="${isActive}">${item.title}</a></li>\n`;
     }
@@ -111,7 +112,7 @@ function generateNav() {
 // Generate mobile nav
 function generateMobileNav() {
   let html = '<div class="mobile-header">\n';
-  html += `  <a href="index.html" class="mobile-logo">\n`;
+  html += `  <a href="/" class="mobile-logo">\n`;
   html += `    <img src="${sitemap.logo}" alt="Widgetizer" />\n`;
   html += `  </a>\n`;
   html += '  <button class="hamburger" aria-label="Menu">\n';
@@ -124,12 +125,13 @@ function generateMobileNav() {
 }
 
 // Generate HTML template
-function generateHTML(title, content, activePath, description = "") {
+function generateHTML(title, content, activePath, description = "", canonicalUrl = "") {
   const nav = generateNav()
     .replace(`{{ACTIVE_${activePath}}}`, "active")
     .replace(/\{\{ACTIVE_[^}]+\}\}/g, "");
 
   const descriptionMeta = description ? `\n  <meta name="description" content="${description}">` : "";
+  const canonicalLink = canonicalUrl ? `\n  <link rel="canonical" href="${canonicalUrl}">` : "";
 
   return `<!--
     __          ___     _            _   _              
@@ -147,7 +149,7 @@ function generateHTML(title, content, activePath, description = "") {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} - ${sitemap.title}</title>${descriptionMeta}
+  <title>${title} - ${sitemap.title}</title>${descriptionMeta}${canonicalLink}
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -195,6 +197,16 @@ for (const item of sitemap.navigation) {
     // Convert to HTML
     let htmlContent = marked.parse(markdown);
 
+    // Rewrite relative links ending in .html to clean URLs
+    htmlContent = htmlContent.replace(/href=(['"])([^'"]+?)\.html(#([^'"]*))?\1/g, (match, quote, slug, hashGroup, hash) => {
+      if (slug.startsWith("http://") || slug.startsWith("https://") || slug.startsWith("//")) {
+        return match;
+      }
+      const cleanPath = slug === "index" ? "/" : "/" + slug;
+      const cleanHash = hash ? `#${hash}` : "";
+      return `href=${quote}${cleanPath}${cleanHash}${quote}`;
+    });
+
     // Process blockquotes and add type classes
     htmlContent = htmlContent.replace(/<blockquote>/g, (match, offset, string) => {
       // Find the blockquote content
@@ -220,8 +232,12 @@ for (const item of sitemap.navigation) {
       return type ? `<blockquote class="blockquote-${type}">` : match;
     });
 
+    // Compute canonical URL
+    const cleanSlug = item.path === "index.md" ? "" : item.path.replace(".md", "");
+    const canonicalUrl = `${SITE_URL}/${cleanSlug}`;
+
     // Generate full HTML page
-    const fullHTML = generateHTML(item.title, htmlContent, item.path, metadata.description);
+    const fullHTML = generateHTML(item.title, htmlContent, item.path, metadata.description, canonicalUrl);
 
     // Write HTML file
     try {
@@ -234,13 +250,12 @@ for (const item of sitemap.navigation) {
 }
 
 // Generate sitemap.xml
-const SITE_URL = "https://docs.widgetizer.org";
 const lastmod = new Date().toISOString().split("T")[0];
 const urls = sitemap.navigation
   .filter((item) => item.type === "page")
   .map((item) => {
-    const slug = item.path.replace(".md", ".html");
-    const loc = item.path === "index.md" ? `${SITE_URL}/` : `${SITE_URL}/${slug}`;
+    const slug = item.path === "index.md" ? "" : item.path.replace(".md", "");
+    const loc = `${SITE_URL}/${slug}`;
     const priority = item.path === "index.md" ? "1.0" : "0.8";
     return `  <url>\n    <loc>${loc}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>${priority}</priority>\n  </url>`;
   })
