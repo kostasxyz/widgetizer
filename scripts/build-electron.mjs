@@ -15,6 +15,9 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { existsSync, writeFileSync } from "node:fs";
+import { createInterface } from "node:readline";
+import { resolve } from "node:path";
 
 const args = process.argv.slice(2);
 const platformIdx = args.indexOf("--platform");
@@ -24,6 +27,51 @@ const unsigned = args.includes("--unsigned");
 if (platform !== "mac" && platform !== "win") {
   console.error("Usage: node scripts/build-electron.mjs --platform <mac|win> [--unsigned]");
   process.exit(1);
+}
+
+await ensureEnvProduction();
+
+function prompt(question) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((res) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      res(answer.trim().toLowerCase());
+    });
+  });
+}
+
+async function ensureEnvProduction() {
+  const envPath = resolve(process.cwd(), ".env.production");
+  if (existsSync(envPath)) return;
+
+  console.log("");
+  console.log("[preflight] .env.production not found.");
+  console.log("  Production builds need it so VITE_API_URL is empty (same-origin) in the bundle.");
+  console.log("  Without it, the packaged app's frontend will call http://localhost:3001 and");
+  console.log("  every API request will fail because the bundled server uses a dynamic port.");
+  console.log("");
+
+  // Non-interactive (CI, redirected stdin) — auto-create the safe default
+  // rather than hanging on a prompt nobody can answer.
+  if (!process.stdin.isTTY) {
+    writeFileSync(envPath, "VITE_API_URL=\n");
+    console.log(`Non-interactive shell — wrote ${envPath} with VITE_API_URL=`);
+    return;
+  }
+
+  const answer = await prompt("Create .env.production now? [Y/n] ");
+  if (answer === "" || answer === "y" || answer === "yes") {
+    writeFileSync(envPath, "VITE_API_URL=\n");
+    console.log(`Wrote ${envPath}`);
+    return;
+  }
+
+  const confirm = await prompt("Continue the build anyway? [y/N] ");
+  if (confirm !== "y" && confirm !== "yes") {
+    console.error("Aborted.");
+    process.exit(1);
+  }
 }
 
 function run(cmd, cmdArgs, extraEnv = {}) {

@@ -18,6 +18,17 @@ Use this when testing Electron-specific features (menus, native dialogs). For re
 
 ## Production Build
 
+### Prerequisite: `.env.production`
+
+The production frontend bundle is same-origin: it talks to whichever Express origin served it (the bundled server on a dynamic port in Electron, the deployed Express host on the web app). For that to work, `VITE_API_URL` must be empty in the production build, which is what `.env.production` exists to enforce — Vite loads it with priority over `.env` when `vite build` runs.
+
+```
+# .env.production
+VITE_API_URL=
+```
+
+If this file is missing, the bundle bakes in `VITE_API_URL` from `.env` (typically `http://localhost:3001`) and every `/api/*` call in the packaged app fails because the bundled server runs on a dynamic port. The build scripts prompt for confirmation if `.env.production` is missing.
+
 Build the React frontend and package the Electron app:
 
 ```bash
@@ -321,4 +332,5 @@ Notes:
 
 - **asar enabled**: The app is packaged into `app.asar`, with native modules and themes unpacked in `app.asar.unpacked` for compatibility.
 - **Server process**: Electron spawns the Express server using `utilityProcess` (Electron's lightweight child process API designed for CPU-intensive work without access to the renderer).
-- **Startup flow**: A loading screen is shown immediately; the UI swaps in once `/health` is ready.
+- **Server port resolution**: The bundled server is spawned with `PORT=0`, asks the OS for an ephemeral port at `app.listen` time, then posts `{ type: "server-ready", port }` back to the Electron main process over the `utilityProcess` IPC channel. Main reads the actual port from that message, builds the renderer URL from it, and uses it to load the window. This eliminates the TOCTOU race that a probe-then-bind approach has and means two packaged apps (or a packaged app alongside another local server) never collide. Set the `PORT` env var to force a specific port; if that port is taken, the server exits non-zero with `EADDRINUSE` instead of hanging.
+- **Startup flow**: A loading screen is shown immediately. The UI swaps in once the server-ready IPC message arrives (or the 30s timeout fires, surfacing a Startup Error screen with a Retry button).
