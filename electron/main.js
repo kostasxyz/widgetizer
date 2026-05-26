@@ -351,7 +351,6 @@ function createWindow() {
 
   mainWindow.on("ready-to-show", () => {
     log("Window ready to show");
-    mainWindow.maximize();
     mainWindow.show();
     mainWindow.focus();
   });
