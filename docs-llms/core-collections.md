@@ -341,11 +341,19 @@ The full export wiring (two-pass validation, subdirectory creation, per-item `sh
 | `src/hooks/useCollectionItems.js` | `{ items, loading, error, refetch }` for one type |
 | `src/pages/CollectionItems.jsx` | Listing table (search, multi-select bulk delete, row actions, drag-reorder when `sortable`, "Needs attention" filter for invalid items) |
 | `src/pages/CollectionItemAdd.jsx` / `CollectionItemEdit.jsx` | Add/edit routes; edit re-routes with `navigate(newPath, { replace: true })` on slug change |
-| `src/components/collections/CollectionItemForm.jsx` | Shared schema-driven form: `react-hook-form`, renders fields via `SettingsRenderer`, `useGuardedFormPage(isDirty)`, slug auto-generated from the `usedAsTitle` field, inline required-field validation, invalid items load with `validationErrors` pre-populated |
+| `src/components/collections/CollectionItemForm.jsx` | Shared schema-driven form: `react-hook-form`, renders fields via `SettingsRenderer`, `useGuardedFormPage(isDirty)`, slug auto-generated from the `usedAsTitle` field, inline required-field validation, invalid items load with `validationErrors` pre-populated; the `usedAsTitle` field renders in a floating bar with an icon-only **Preview** (eye) button when the type has item pages |
+| `src/components/collections/CollectionItemPreview.jsx` | Full-screen, page-editor-style item preview overlay (back button, item dropdown, desktop/mobile toggle); renders the selected item — including the live unsaved draft — through the theme template in an iframe |
 
 Routes are registered in `src/App.jsx` (`collections/:collectionType`, `.../add`, `.../:itemSlug/edit`). The sidebar (`src/components/layout/Sidebar.jsx`) calls `useCollections()` and renders one nav entry per type after Pages/Menus, with a numeric item-count badge (shown even at `0`) and a Lucide icon resolved from the schema `icon` string (fallback `Database`); the label adapter accepts a pre-resolved `label` alongside the existing `labelKey`.
 
-There is no autosave, undo/redo, or live preview for collection items in v1 — explicit save plus the navigation guard is sufficient. These are deliberate omissions, not gaps.
+There is no autosave or undo/redo for collection items in v1 — explicit save plus the navigation guard is sufficient. These are deliberate omissions, not gaps.
+
+### Item preview
+
+Item pages can be previewed without exporting, through the same token flow as page/standalone previews:
+
+- **Entry points** — the edit form's always-visible eye button (previews the current unsaved draft first), and a **Preview** action in each listing row's `…` menu (gated on `hasItemPages`).
+- **Endpoint** — `POST /api/preview/collection` (`createCollectionPreviewToken` in `previewController.js`) renders a draft item (`{ collectionType, slug, settings }`) against the active project's theme: it loads the schema + `template.liquid`, assembles a draft item, renders header/footer/template through `renderPageLayout` in `"preview"` mode, injects the base tag + standalone runtime + a link-click guard, and returns `{ token }`. The client points an iframe at `/render/:token`. Guards: `400` when `collectionType` is missing, and `400` "Preview unavailable" when the collection has no `template.liquid` (or the type is unknown). The dropdown lists saved items so authors can flip between them; selecting one re-renders via the same endpoint.
 
 ---
 
@@ -369,7 +377,7 @@ Deferred, with the v1 data model already forward-compatible:
 - Taxonomies (categories, tags).
 - Repeater / gallery setting type (removes the single-image limitation).
 - `{% collection ... as items %}` tag form (per-block scoping, cursor pagination).
-- Draft/publish states, per-item undo/redo and autosave, live preview for items.
+- Draft/publish states, per-item undo/redo and autosave. (Live item preview shipped — see §9 "Item preview".)
 - **Forms inside collection templates** — open question, deferred. Interim behavior: item templates should not contain hosted `<form>` markup (the forms manifest scans page widget JSON, not Liquid templates). Authors who need a form on an item page link to a real page that hosts it. Other interactive widgets (sliders, accordions) work fine inside item templates as long as their JS ships via a widget used on at least one page.
 - Project-defined collection types (collections stay theme-defined in v1).
 - Richtext HTML `<img>` media tracking — a pre-existing limitation shared by pages/globals; use the `image` setting type for tracked media.
@@ -378,7 +386,7 @@ Deferred, with the v1 data model already forward-compatible:
 
 ## Tests
 
-Backend coverage lives in `server/tests/`: `collections.test.js`, `collectionApi.test.js`, `collectionItems.test.js`, `collectionFilter.test.js`, `collectionItemExport.test.js`, `collectionItemPageData.test.js`, `collectionLinkEnrichment.test.js`, `collectionMediaUsage.test.js`, `collectionPresetSeeding.test.js` — covering schema validation, CRUD + slug/UUID invariants, atomic-write crash recovery, the Liquid filter, depth-aware export, the page-shaped object, link enrichment, media usage, and preset seeding.
+Backend coverage lives in `server/tests/`: `collections.test.js`, `collectionApi.test.js`, `collectionItems.test.js`, `collectionFilter.test.js`, `collectionItemExport.test.js`, `collectionItemPageData.test.js`, `collectionLinkEnrichment.test.js`, `collectionMediaUsage.test.js`, `collectionPresetSeeding.test.js` — covering schema validation, CRUD + slug/UUID invariants, atomic-write crash recovery, the Liquid filter, depth-aware export, the page-shaped object, link enrichment, media usage, and preset seeding. Item-preview guard paths (missing `collectionType`, template-less collection) are covered in `preview.test.js`.
 
 ---
 

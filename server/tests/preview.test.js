@@ -34,12 +34,14 @@ console.log = () => {};
 console.warn = () => {};
 console.error = () => {};
 
-const { getProjectDir, getProjectPagesDir } = await import("../config.js");
+const { getProjectDir, getProjectPagesDir, getProjectCollectionSchemaPath } = await import("../config.js");
 
 const projectRepo = await import("../db/repositories/projectRepository.js");
 const { writeMediaFile } = await import("../controllers/mediaController.js");
 
-const { getGlobalWidgets, saveGlobalWidget, serveAsset } = await import("../controllers/previewController.js");
+const { getGlobalWidgets, saveGlobalWidget, serveAsset, createCollectionPreviewToken } = await import(
+  "../controllers/previewController.js"
+);
 const { closeDb } = await import("../db/index.js");
 
 // ============================================================================
@@ -450,3 +452,43 @@ describe("saveGlobalWidget — mismatch guard", () => {
 
 // NOTE: Project mismatch (409) is now handled by the resolveActiveProject middleware,
 // not by individual controller functions. Middleware-level tests cover this behavior.
+
+// ============================================================================
+// createCollectionPreviewToken — guard paths
+// ============================================================================
+
+describe("createCollectionPreviewToken — guards", () => {
+  it("returns 400 when collectionType is missing", async () => {
+    const res = await callController(createCollectionPreviewToken, { body: {} });
+    assert.equal(res._status, 400);
+    assert.match(res._json.error, /collectionType is required/i);
+  });
+
+  it("returns 400 (Preview unavailable) for a collection with no template.liquid", async () => {
+    // Valid schema, but no template.liquid alongside it.
+    await fs.outputJson(getProjectCollectionSchemaPath(PROJECT_FOLDER, "rooms"), {
+      type: "rooms",
+      schemaVersion: 1,
+      displayName: "Room",
+      displayNamePlural: "Rooms",
+      icon: "Bed",
+      hasItemPages: true,
+      slugPrefix: "rooms",
+      settings: [{ type: "text", id: "title", label: "Title", required: true, usedAsTitle: true }],
+    });
+
+    const res = await callController(createCollectionPreviewToken, {
+      body: { collectionType: "rooms", slug: "draft", settings: { title: "Draft" } },
+    });
+    assert.equal(res._status, 400);
+    assert.match(res._json.error, /Preview unavailable/i);
+  });
+
+  it("returns 400 for an unknown collection type (no schema, no template)", async () => {
+    const res = await callController(createCollectionPreviewToken, {
+      body: { collectionType: "does-not-exist" },
+    });
+    assert.equal(res._status, 400);
+    assert.match(res._json.error, /Preview unavailable/i);
+  });
+});
