@@ -31,7 +31,7 @@ const { getProjectDir, getProjectPagesDir, getProjectMenusDir } = await import("
 
 const projectRepo = await import("../db/repositories/projectRepository.js");
 const { writeMediaFile } = await import("../controllers/mediaController.js");
-const { renderWidget, renderPageLayout } = await import("../services/renderingService.js");
+const { renderWidget, renderPageLayout, renderLiquidTemplate } = await import("../services/renderingService.js");
 const { closeDb } = await import("../db/index.js");
 
 // ============================================================================
@@ -867,5 +867,57 @@ describe("renderPageLayout", () => {
       activeProjectId: PROJECT_ID,
     });
     await fs.remove(noLayoutDir);
+  });
+});
+
+// ============================================================================
+// Phase 18 — body class override + renderLiquidTemplate helper
+// ============================================================================
+
+describe("renderPageLayout — body class override", () => {
+  it("defaults the body class to page-${slug} when bodyClass is not provided", async () => {
+    const html = await renderPageLayout(
+      PROJECT_ID,
+      { mainContent: "<p>x</p>" },
+      { name: "Plain", slug: "plain" },
+      RAW_THEME_SETTINGS,
+      "preview",
+      null,
+    );
+    assert.match(html, /<body class="page-plain">/);
+  });
+
+  it("replaces the default with contentSections.bodyClass when provided", async () => {
+    const html = await renderPageLayout(
+      PROJECT_ID,
+      { mainContent: "<p>x</p>", bodyClass: "collection-portfolio item-alpha" },
+      { name: "Item", slug: "alpha" },
+      RAW_THEME_SETTINGS,
+      "preview",
+      null,
+    );
+    assert.match(html, /<body class="collection-portfolio item-alpha">/);
+    assert.doesNotMatch(html, /page-alpha/, "default page-slug class must be replaced, not appended");
+  });
+});
+
+describe("renderLiquidTemplate", () => {
+  it("renders a template string through the cached project engine", async () => {
+    const html = await renderLiquidTemplate(
+      PROJECT_ID,
+      "Hello {{ item.name }} — {{ 'a,b' | split: ',' | size }}",
+      { item: { name: "World" } },
+      { projectId: PROJECT_ID, renderMode: "publish" },
+    );
+    assert.equal(html.trim(), "Hello World — 2");
+  });
+
+  it("resolves core tags/filters in the rendered template", async () => {
+    const html = await renderLiquidTemplate(
+      PROJECT_ID,
+      '{% asset src: "x.css" %}',
+      { globals: { projectId: PROJECT_ID, renderMode: "publish", outputPathPrefix: "../" } },
+    );
+    assert.match(html, /href="\.\.\/assets\/x\.css"/);
   });
 });

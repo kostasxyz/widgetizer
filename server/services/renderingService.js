@@ -871,8 +871,12 @@ async function renderPageLayout(
     const projectData = await getProjectData(projectId);
 
     // 4. Add page-specific context with separated content sections
-    const pageSlugClass = pageData?.slug ? `page-${pageData.slug}` : "";
-    const bodyClasses = [pageSlugClass, contentSections.extraBodyClasses || ""].filter(Boolean).join(" ");
+    // Base body class defaults to `page-${slug}`; a caller (e.g. collection
+    // item-page export) may override it via contentSections.bodyClass. Pages
+    // never set bodyClass, so they keep the default.
+    const defaultBodyClass = pageData?.slug ? `page-${pageData.slug}` : "";
+    const baseBodyClass = contentSections.bodyClass !== undefined ? contentSections.bodyClass : defaultBodyClass;
+    const bodyClasses = [baseBodyClass, contentSections.extraBodyClasses || ""].filter(Boolean).join(" ");
     const renderContext = {
       ...baseContext,
       header: contentSections.headerContent || "",
@@ -901,6 +905,27 @@ async function renderPageLayout(
     console.error(`Error rendering page layout for project ${projectId}:`, error);
     return `<html><body><h1>Error rendering page</h1><pre>${error.message}</pre></body></html>`;
   }
+}
+
+/**
+ * Render an arbitrary Liquid template string through the project's cached engine
+ * (so theme snippets, tags and filters all resolve). Used by the collection
+ * item-page export to render a collection type's template.liquid with a
+ * per-item context.
+ * @param {string} projectId
+ * @param {string} templateString - raw Liquid source
+ * @param {object} context - render context (theme, mediaFiles, item/page data, etc.)
+ * @param {object} [sharedGlobals] - globals map; falls back to context.globals
+ * @returns {Promise<string>} rendered HTML
+ */
+async function renderLiquidTemplate(projectId, templateString, context, sharedGlobals = null) {
+  const projectFolderName = await getProjectFolderName(projectId);
+  const projectDir = getProjectDir(projectFolderName);
+  const themeSnippetsDir = path.join(projectDir, "snippets");
+  const engine = getOrCreateEngine(projectDir, themeSnippetsDir);
+  return engine.parseAndRender(templateString, context, {
+    globals: sharedGlobals || (context && context.globals) || {},
+  });
 }
 
 /**
@@ -983,6 +1008,7 @@ async function widgetSupportsTransparentHeader(projectId, widgetType) {
 export {
   renderWidget,
   renderPageLayout,
+  renderLiquidTemplate,
   renderEnqueuedAssetTags,
   widgetSupportsTransparentHeader,
   resolveLinkValue,
