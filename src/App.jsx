@@ -10,6 +10,9 @@ import Menus from "./pages/Menus";
 import MenusAdd from "./pages/MenusAdd";
 import MenusEdit from "./pages/MenusEdit";
 import Media from "./pages/Media";
+import CollectionItems from "./pages/CollectionItems";
+import CollectionItemAdd from "./pages/CollectionItemAdd";
+import CollectionItemEdit from "./pages/CollectionItemEdit";
 import Settings from "./pages/Settings";
 import Themes from "./pages/Themes";
 import ExportSite from "./pages/ExportSite";
@@ -117,6 +120,18 @@ const router = createBrowserRouter(
             {
               path: "media",
               element: <Media />,
+            },
+            {
+              path: "collections/:type",
+              element: <CollectionItems />,
+            },
+            {
+              path: "collections/:type/add",
+              element: <CollectionItemAdd />,
+            },
+            {
+              path: "collections/:type/:slug/edit",
+              element: <CollectionItemEdit />,
             },
             {
               path: "settings",
