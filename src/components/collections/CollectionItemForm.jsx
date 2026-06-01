@@ -1,13 +1,13 @@
 /* eslint-disable react-hooks/incompatible-library */
-import { useState, useEffect, useRef } from "react";
+import { Fragment, useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
+import { Eye } from "lucide-react";
 import { formatSlug } from "../../utils/slugUtils";
 import useToastStore from "../../stores/toastStore";
 import Button from "../ui/Button";
 import SettingsRenderer from "../settings/SettingsRenderer";
-import { API_URL } from "../../config";
-import { previewCollectionItem } from "../../queries/collectionManager";
+import CollectionItemPreview from "./CollectionItemPreview";
 
 const HEADER_TYPE = "header";
 
@@ -148,37 +148,89 @@ export default function CollectionItemForm({
     }
   };
 
-  // Open a new-tab preview of the current (unsaved) draft rendered through the
+  // Full-screen preview of the current (unsaved) draft rendered through the
   // collection's theme template. Only meaningful when the collection has item
   // pages (otherwise there is no template to render).
-  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [previewDraft, setPreviewDraft] = useState(null);
   const canPreview = !!schema?.hasItemPages;
-  const handlePreview = async () => {
-    // Open the tab synchronously (inside the click) to avoid popup blockers,
-    // then point it at the rendered token once it's ready.
-    const win = window.open("", "_blank");
-    setIsPreviewing(true);
-    try {
-      const values = getValues();
-      const { token } = await previewCollectionItem({
-        collectionType: schema.type,
-        slug: formatSlug(values.slug || "preview"),
-        settings: values.settings || {},
-      });
-      if (win) win.location = API_URL(`/render/${token}`);
-      else window.open(API_URL(`/render/${token}`), "_blank");
-    } catch (err) {
-      win?.close();
-      showToast(err.message || t("collectionsForm.previewError", "Could not build preview"), "error");
-    } finally {
-      setIsPreviewing(false);
-    }
+  const openPreview = () => {
+    const values = getValues();
+    setPreviewDraft({
+      slug: formatSlug(values.slug || "preview"),
+      settings: values.settings || {},
+    });
   };
+
+  // Float the title field as a flush bar at the top of the scroll area while
+  // scrolling. A plain `sticky` element is trapped below the page's content
+  // padding, so once "stuck" we switch the bar to `position: fixed` (escaping
+  // that padding) and collapse its label. A sentinel just above the row tells
+  // us when to flip; a spacer holds the bar's place so the form doesn't jump.
+  const [titleStuck, setTitleStuck] = useState(false);
+  const [titleBarStyle, setTitleBarStyle] = useState(null);
+  const [titleBarHeight, setTitleBarHeight] = useState(0);
+  const titleSentinelRef = useRef(null);
+  const titleSpacerRef = useRef(null);
+  const titleBarRef = useRef(null);
+  const titleScrollRootRef = useRef(null);
+
+  useEffect(() => {
+    const sentinel = titleSentinelRef.current;
+    if (!sentinel) return undefined;
+    let root = sentinel.parentElement;
+    while (root && root !== document.body) {
+      const overflowY = getComputedStyle(root).overflowY;
+      if (overflowY === "auto" || overflowY === "scroll") break;
+      root = root.parentElement;
+    }
+    titleScrollRootRef.current = root && root !== document.body ? root : null;
+    const io = new IntersectionObserver(([entry]) => setTitleStuck(!entry.isIntersecting), {
+      root: titleScrollRootRef.current,
+      threshold: 0,
+    });
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, [canPreview]);
+
+  // While stuck, keep the fixed bar aligned with its in-flow spacer (left/width)
+  // and pinned to the top of the scroll viewport, updating on scroll/resize.
+  useEffect(() => {
+    if (!titleStuck) {
+      setTitleBarStyle(null);
+      return undefined;
+    }
+    const compute = () => {
+      const spacer = titleSpacerRef.current;
+      if (!spacer) return;
+      const rect = spacer.getBoundingClientRect();
+      const root = titleScrollRootRef.current;
+      const top = root ? root.getBoundingClientRect().top : 0;
+      setTitleBarStyle({ position: "fixed", top, left: rect.left, width: rect.width });
+    };
+    compute();
+    const root = titleScrollRootRef.current;
+    root?.addEventListener("scroll", compute, { passive: true });
+    window.addEventListener("resize", compute);
+    return () => {
+      root?.removeEventListener("scroll", compute);
+      window.removeEventListener("resize", compute);
+    };
+  }, [titleStuck]);
+
+  // Measure the bar's natural height so the spacer can hold its place when the
+  // bar becomes fixed (prevents the form below it from jumping up).
+  useEffect(() => {
+    if (!titleStuck && titleBarRef.current) {
+      const h = titleBarRef.current.offsetHeight;
+      setTitleBarHeight((prev) => (prev !== h ? h : prev));
+    }
+  }, [titleStuck]);
 
   const labelWithRequired = (setting) =>
     setting.required && setting.label ? `${setting.label} *` : setting.label;
 
   return (
+    <>
     <form onSubmit={rhfHandleSubmit(onSubmitHandler)} className="form-container">
       <div className="form-section">
         {/* Slug */}
@@ -203,11 +255,13 @@ export default function CollectionItemForm({
           <p className="form-description">{t("collectionsForm.slugHelp")}</p>
         </div>
 
-        {/* Schema-driven fields */}
-        {allSettings.map((setting) =>
-          setting.type === HEADER_TYPE ? (
-            <SettingsRenderer key={setting.id} setting={setting} value={undefined} onChange={() => {}} />
-          ) : (
+        {/* Schema-driven fields. The title field gets a sticky row with an
+            icon-only Preview button so it stays reachable while scrolling. */}
+        {allSettings.map((setting) => {
+          if (setting.type === HEADER_TYPE) {
+            return <SettingsRenderer key={setting.id} setting={setting} value={undefined} onChange={() => {}} />;
+          }
+          const renderer = (
             <SettingsRenderer
               key={setting.id}
               setting={{ ...setting, label: labelWithRequired(setting) }}
@@ -215,8 +269,36 @@ export default function CollectionItemForm({
               onChange={handleSettingChange}
               error={fieldErrors[setting.id]}
             />
-          ),
-        )}
+          );
+          if (setting.usedAsTitle && canPreview) {
+            return (
+              <Fragment key={setting.id}>
+                <div ref={titleSentinelRef} aria-hidden="true" className="h-px" />
+                <div ref={titleSpacerRef} className="-mx-4" style={titleStuck ? { height: titleBarHeight } : undefined}>
+                  <div
+                    ref={titleBarRef}
+                    style={titleBarStyle || undefined}
+                    className={`z-30 flex items-end gap-3 border-b border-slate-200 bg-white px-4 pb-3 pt-2 ${
+                      titleStuck ? "shadow-sm [&_.form-label]:hidden" : ""
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">{renderer}</div>
+                    <button
+                      type="button"
+                      onClick={openPreview}
+                      title={t("collectionsForm.preview")}
+                      aria-label={t("collectionsForm.preview")}
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                    >
+                      <Eye size={18} />
+                    </button>
+                  </div>
+                </div>
+              </Fragment>
+            );
+          }
+          return renderer;
+        })}
       </div>
 
       <div className="form-actions-separated justify-end">
@@ -225,16 +307,21 @@ export default function CollectionItemForm({
             {t("collections.deleteModal.cancel")}
           </Button>
         )}
-        {canPreview && (
-          <Button type="button" onClick={handlePreview} variant="secondary" disabled={isPreviewing}>
-            {isPreviewing ? t("collectionsForm.previewLoading", "Opening…") : t("collectionsForm.preview", "Preview")}
-          </Button>
-        )}
         <Button type="submit" disabled={isSubmitting || !isDirtyProp} variant={isDirtyProp ? "dark" : "primary"}>
           {isSubmitting ? t("collectionsForm.loading") : submitLabel}
           {isDirtyProp && <span className="w-2 h-2 bg-pink-500 rounded-full -mt-2" />}
         </Button>
       </div>
     </form>
+
+    {previewDraft && (
+      <CollectionItemPreview
+        schema={schema}
+        draft={previewDraft}
+        editingSlug={initialData.slug || null}
+        onClose={() => setPreviewDraft(null)}
+      />
+    )}
+    </>
   );
 }

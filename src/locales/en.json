@@ -94,6 +94,15 @@
       "updateError": "Failed to update item"
     }
   },
+  "collectionsPreview": {
+    "back": "Back to {{name}}",
+    "draftSuffix": "(draft)",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "noItems": "No items",
+    "desktop": "Desktop",
+    "mobile": "Mobile"
+  },
   "layout": {
     "toolbar": {
       "profile": "Profile",

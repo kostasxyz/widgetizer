@@ -28,6 +28,7 @@ import {
   GripVertical,
   AlertTriangle,
   Database,
+  Eye,
 } from "lucide-react";
 import {
   duplicateCollectionItem,
@@ -46,6 +47,7 @@ import { resolveLucideIcon } from "../utils/lucideIcon";
 import PageLayout from "../components/layout/PageLayout";
 import Button, { IconButton } from "../components/ui/Button";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
+import CollectionItemPreview from "../components/collections/CollectionItemPreview";
 
 const TABLE_CLASS = "w-full rounded-lg border border-slate-200 border-collapse bg-white";
 
@@ -141,6 +143,7 @@ export default function CollectionItems() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [showInvalidOnly, setShowInvalidOnly] = useState(false);
+  const [previewSlug, setPreviewSlug] = useState(null);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [selectedSlugs, setSelectedSlugs] = useState([]);
   const [orderedItems, setOrderedItems] = useState([]);
@@ -341,6 +344,19 @@ export default function CollectionItems() {
         </IconButton>
         {openMenuId === item.slug && (
           <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+            {schema?.hasItemPages && (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenMenuId(null);
+                  setPreviewSlug(item.slug);
+                }}
+                className={`${menuButtonClass} text-slate-700 hover:bg-slate-50`}
+              >
+                <Eye size={14} />
+                {t("collectionsForm.preview")}
+              </button>
+            )}
             <Link
               to={`/collections/${type}/${item.slug}/edit`}
               onClick={() => setOpenMenuId(null)}
@@ -565,6 +581,10 @@ export default function CollectionItems() {
       )}
 
       {confirmationModal}
+
+      {previewSlug && schema && (
+        <CollectionItemPreview schema={schema} initialSlug={previewSlug} onClose={() => setPreviewSlug(null)} />
+      )}
     </PageLayout>
   );
 }
