@@ -78,6 +78,24 @@ export const getProjectThemeDir = (projectId) => path.join(getProjectDir(project
 export const getProjectThemeJsonPath = (projectId) =>
   path.join(getProjectDir(projectId), "theme.json");
 
+// Project Collection paths (item DATA — protected user content)
+export const getProjectCollectionsDir = (projectFolderName) =>
+  path.join(getProjectDir(projectFolderName), "collections");
+export const getProjectCollectionDir = (projectFolderName, collectionType) =>
+  path.join(getProjectCollectionsDir(projectFolderName), collectionType);
+export const getProjectCollectionItemPath = (projectFolderName, collectionType, itemSlug) =>
+  path.join(getProjectCollectionDir(projectFolderName, collectionType), `${itemSlug}.json`);
+export const getProjectCollectionOrderPath = (projectFolderName, collectionType) =>
+  path.join(getProjectCollectionDir(projectFolderName, collectionType), "_order.json");
+
+// Copied theme collection-type definitions (schema/template — theme-owned runtime source)
+export const getProjectCollectionTypesDir = (projectFolderName) =>
+  path.join(getProjectDir(projectFolderName), "collection-types");
+export const getProjectCollectionSchemaPath = (projectFolderName, collectionType) =>
+  path.join(getProjectCollectionTypesDir(projectFolderName), collectionType, "schema.json");
+export const getProjectCollectionTemplatePath = (projectFolderName, collectionType) =>
+  path.join(getProjectCollectionTypesDir(projectFolderName), collectionType, "template.liquid");
+
 // Project Media paths
 export const getProjectUploadsDir = (projectId) => path.join(getProjectDir(projectId), "uploads");
 export const getProjectImagesDir = (projectId) => path.join(getProjectUploadsDir(projectId), "images");

@@ -967,6 +967,67 @@ describe("uploadTheme validation", () => {
 });
 
 // ============================================================================
+// uploadTheme — collection-type schema validation (Collections spec Section 5)
+// ============================================================================
+
+describe("uploadTheme — collection schema validation", () => {
+  afterEach(async () => {
+    for (const name of ["coll-valid", "coll-invalid", "coll-preset"]) {
+      await fs.remove(getThemeDir(name));
+    }
+  });
+
+  const validColl = (over = {}) => ({
+    type: "portfolio",
+    schemaVersion: 1,
+    displayName: "Portfolio",
+    displayNamePlural: "Portfolio",
+    icon: "Briefcase",
+    hasItemPages: false,
+    settings: [{ type: "text", id: "title", label: "Title", usedAsTitle: true }],
+    ...over,
+  });
+
+  it("installs a theme that ships a valid collection schema", async () => {
+    const buffer = buildThemeZip("coll-valid", {
+      extraFiles: {
+        "collection-types/portfolio/schema.json": JSON.stringify(validColl()),
+      },
+    });
+    const res = await callController(uploadTheme, { file: buffer });
+    assert.equal(res._status, 201, `Expected 201, got ${res._status}: ${JSON.stringify(res._json)}`);
+  });
+
+  it("rejects a theme whose collection schema is invalid", async () => {
+    const buffer = buildThemeZip("coll-invalid", {
+      extraFiles: {
+        // no usedAsTitle setting -> invalid
+        "collection-types/portfolio/schema.json": JSON.stringify(
+          validColl({ settings: [{ type: "text", id: "title", label: "Title" }] }),
+        ),
+      },
+    });
+    const res = await callController(uploadTheme, { file: buffer });
+    assert.equal(res._status, 400);
+    assert.ok(Array.isArray(res._json.errors) && res._json.errors.some((e) => /portfolio/.test(e)));
+  });
+
+  it("rejects a theme whose preset ships a collection-types/ folder (BLOCKER-1)", async () => {
+    const buffer = buildThemeZip("coll-preset", {
+      extraFiles: {
+        "collection-types/portfolio/schema.json": JSON.stringify(validColl()),
+        "presets/blog/collection-types/posts/schema.json": JSON.stringify(
+          validColl({ type: "posts" }),
+        ),
+      },
+    });
+    const res = await callController(uploadTheme, { file: buffer });
+    assert.equal(res._status, 400);
+    assert.ok(res._json.errors.some((e) => /preset/i.test(e) && /blog/.test(e)));
+  });
+});
+
+// ============================================================================
 // uploadTheme — update version validation
 // ============================================================================
 

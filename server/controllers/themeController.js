@@ -21,6 +21,7 @@ import { sortVersions, getLatestVersion, isValidVersion } from "../utils/semver.
 import { hasAvailableUpdate } from "../utils/updateStatus.js";
 import { ZIP_MIME_TYPES } from "../utils/mimeTypes.js";
 import { updateThemeSettingsMediaUsage } from "../services/mediaUsageService.js";
+import { validateThemeCollectionSchemas } from "../services/collectionService.js";
 import { sanitizeThemeSettings } from "../services/sanitizationService.js";
 import { readAppSettingsFile } from "./appSettingsController.js";
 
@@ -1403,6 +1404,19 @@ export async function uploadTheme(req, res) {
           await fs.remove(extractedLatestDir);
         } catch {
           // Ignore if doesn't exist
+        }
+
+        // Validate collection-type schemas before committing the theme to its
+        // final location (Collections spec Section 5 "Theme Upload Validation").
+        // Rejects invalid schemas, duplicate/reserved slugPrefix, and presets
+        // that ship collection-types/ (BLOCKER-1 resolution).
+        const collectionValidation = await validateThemeCollectionSchemas(extractedThemeDir);
+        if (!collectionValidation.valid) {
+          await fs.remove(tempDir);
+          return res.status(400).json({
+            message: "Invalid theme: collection-type schema validation failed.",
+            errors: collectionValidation.errors,
+          });
         }
 
         // Move to final location
