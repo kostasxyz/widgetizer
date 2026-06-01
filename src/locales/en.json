@@ -83,6 +83,9 @@
     "saveChanges": "Save changes",
     "backToList": "Back to list",
     "fieldRequired": "This field is required",
+    "preview": "Preview",
+    "previewLoading": "Opening…",
+    "previewError": "Could not build preview",
     "toasts": {
       "createSuccess": "{{name}} created",
       "createError": "Failed to create item",

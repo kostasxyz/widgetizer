@@ -6,6 +6,8 @@ import { formatSlug } from "../../utils/slugUtils";
 import useToastStore from "../../stores/toastStore";
 import Button from "../ui/Button";
 import SettingsRenderer from "../settings/SettingsRenderer";
+import { API_URL } from "../../config";
+import { previewCollectionItem } from "../../queries/collectionManager";
 
 const HEADER_TYPE = "header";
 
@@ -58,6 +60,7 @@ export default function CollectionItemForm({
     reset,
     watch,
     setValue,
+    getValues,
   } = useForm({
     defaultValues: {
       slug: initialData.slug || "",
@@ -145,6 +148,33 @@ export default function CollectionItemForm({
     }
   };
 
+  // Open a new-tab preview of the current (unsaved) draft rendered through the
+  // collection's theme template. Only meaningful when the collection has item
+  // pages (otherwise there is no template to render).
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const canPreview = !!schema?.hasItemPages;
+  const handlePreview = async () => {
+    // Open the tab synchronously (inside the click) to avoid popup blockers,
+    // then point it at the rendered token once it's ready.
+    const win = window.open("", "_blank");
+    setIsPreviewing(true);
+    try {
+      const values = getValues();
+      const { token } = await previewCollectionItem({
+        collectionType: schema.type,
+        slug: formatSlug(values.slug || "preview"),
+        settings: values.settings || {},
+      });
+      if (win) win.location = API_URL(`/render/${token}`);
+      else window.open(API_URL(`/render/${token}`), "_blank");
+    } catch (err) {
+      win?.close();
+      showToast(err.message || t("collectionsForm.previewError", "Could not build preview"), "error");
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
   const labelWithRequired = (setting) =>
     setting.required && setting.label ? `${setting.label} *` : setting.label;
 
@@ -193,6 +223,11 @@ export default function CollectionItemForm({
         {onCancel && (
           <Button type="button" onClick={onCancel} variant="secondary">
             {t("collections.deleteModal.cancel")}
+          </Button>
+        )}
+        {canPreview && (
+          <Button type="button" onClick={handlePreview} variant="secondary" disabled={isPreviewing}>
+            {isPreviewing ? t("collectionsForm.previewLoading", "Opening…") : t("collectionsForm.preview", "Preview")}
           </Button>
         )}
         <Button type="submit" disabled={isSubmitting || !isDirtyProp} variant={isDirtyProp ? "dark" : "primary"}>

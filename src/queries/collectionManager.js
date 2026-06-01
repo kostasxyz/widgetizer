@@ -220,3 +220,25 @@ export async function reorderCollectionItems(type, order) {
     rethrowQueryError(error, "Failed to reorder items");
   }
 }
+
+/**
+ * Render an (unsaved) collection item draft through its theme template and
+ * return a short-lived preview token. Open `${API_URL}/render/${token}` to view.
+ * @param {{collectionType: string, slug: string, settings: Object}} draft
+ * @returns {Promise<{token: string}>}
+ */
+export async function previewCollectionItem(draft) {
+  try {
+    return await apiFetchJson(
+      `/api/preview/collection`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      },
+      { fallbackMessage: "Failed to build preview" },
+    );
+  } catch (error) {
+    rethrowQueryError(error, "Failed to build preview");
+  }
+}

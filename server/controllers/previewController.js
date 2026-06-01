@@ -7,11 +7,26 @@ import { getSetting } from "../db/repositories/settingsRepository.js";
 import * as projectRepo from "../db/repositories/projectRepository.js";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
-import { renderWidget, renderPageLayout, renderEnqueuedAssetTags, widgetSupportsTransparentHeader } from "../services/renderingService.js";
+import {
+  renderWidget,
+  renderPageLayout,
+  renderEnqueuedAssetTags,
+  widgetSupportsTransparentHeader,
+  renderLiquidTemplate,
+  createBaseRenderContext,
+} from "../services/renderingService.js";
 import { getProjectFolderName } from "../utils/projectHelpers.js";
 import { updateGlobalWidgetMediaUsage } from "../services/mediaUsageService.js";
 import { isProjectResolutionError } from "../utils/projectErrors.js";
 import { generateToken, getToken } from "../services/previewTokenStore.js";
+import {
+  getCollectionSchema,
+  loadCollectionTemplate,
+  resolveCollectionItemLinks,
+  buildCollectionItemPageData,
+} from "../services/collectionService.js";
+import { readProjectThemeData } from "./themeController.js";
+import { listProjectPagesData, readGlobalWidgetData } from "./pageController.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -37,6 +52,16 @@ function injectBaseTag(html) {
   const apiUrl = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3001}`;
   const baseTag = `<base href="${apiUrl}">`;
   return html.replace(/<\/head>/i, `${baseTag}\n</head>`);
+}
+
+// Signal that this is a non-navigable preview: links get the default (arrow)
+// cursor and clicks are suppressed, so nothing follows a link to a dead URL.
+// Buttons (e.g. the gallery lightbox) keep their own cursors and behaviour.
+function injectPreviewLinkGuard(html) {
+  const guard =
+    `<style>a[href]{cursor:default;}</style>` +
+    `<script>document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a[href]");if(a)e.preventDefault();},true);</script>`;
+  return html.replace(/<\/body>/i, `${guard}\n</body>`);
 }
 
 
@@ -261,6 +286,131 @@ export function renderPreviewToken(req, res) {
   }
   res.setHeader("Content-Type", "text/html");
   res.send(html);
+}
+
+/**
+ * Builds a full preview of a single collection item rendered through its
+ * theme template.liquid inside the layout (header/footer/main) — the same
+ * pipeline export uses, but in "preview" mode against an UNSAVED draft so the
+ * editor can preview in-progress edits without persisting.
+ *
+ * Body: { collectionType, slug, settings }. Returns { token }; the caller opens
+ * GET /render/:token in a new tab (shared token store with page previews).
+ */
+export async function createCollectionPreviewToken(req, res) {
+  try {
+    const activeProjectId = projectRepo.getActiveProjectId();
+    if (!activeProjectId) {
+      return res.status(404).json({ error: "No active project found" });
+    }
+
+    const { collectionType, slug, settings } = req.body || {};
+    if (!collectionType) {
+      return res.status(400).json({ error: "collectionType is required" });
+    }
+
+    const folder = await getProjectFolderName(activeProjectId);
+
+    // Schema must exist; template is required to render an item page.
+    let schema;
+    try {
+      schema = await getCollectionSchema(folder, collectionType);
+    } catch {
+      return res.status(404).json({ error: `Collection "${collectionType}" not found.` });
+    }
+    const template = await loadCollectionTemplate(folder, collectionType);
+    if (!template) {
+      return res.status(400).json({
+        error: "Preview unavailable",
+        message: `This collection has no template.liquid, so its items have no page to preview. Enable hasItemPages and add a template to ${collectionType}.`,
+      });
+    }
+
+    const rawThemeSettings = await readProjectThemeData(activeProjectId);
+    const headerData = await readGlobalWidgetData(folder, "header");
+    const footerData = await readGlobalWidgetData(folder, "footer");
+
+    // uuid -> page map so pageUuid links inside the item resolve to slugs.
+    const pages = await listProjectPagesData(activeProjectId);
+    const pagesByUuid = new Map();
+    for (const page of pages || []) {
+      if (page.uuid) pagesByUuid.set(page.uuid, page);
+    }
+
+    // Draft item assembled from the (unsaved) form values.
+    const safeSlug = (slug && String(slug)) || "preview";
+    const now = new Date().toISOString();
+    const draftItem = {
+      id: safeSlug,
+      uuid: "preview",
+      slug: safeSlug,
+      schemaVersion: schema.schemaVersion,
+      created: now,
+      updated: now,
+      settings: settings || {},
+    };
+
+    const apiUrl = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3001}`;
+    // Preview is served at a single URL (root), so no depth prefixing: assets
+    // resolve via absolute API URLs in preview mode (outputPathPrefix === "").
+    const sharedGlobals = {
+      projectId: activeProjectId,
+      apiUrl,
+      renderMode: "preview",
+      themeSettingsRaw: rawThemeSettings,
+      enqueuedStyles: new Map(),
+      enqueuedScripts: new Map(),
+      enqueuedPreloads: new Map(),
+      collectionCache: new Map(),
+      pagesByUuid,
+      pageSlug: `${schema.slugPrefix}/${safeSlug}`,
+      outputPathPrefix: "",
+      currentCanonicalPath: `${schema.slugPrefix}/${safeSlug}.html`,
+    };
+
+    const resolvedItem = resolveCollectionItemLinks(draftItem, pagesByUuid, "");
+
+    let headerContent = "";
+    let footerContent = "";
+    if (headerData) {
+      headerContent = await renderWidget(activeProjectId, "header", headerData, rawThemeSettings, "preview", sharedGlobals, null);
+    }
+    if (footerData) {
+      footerContent = await renderWidget(activeProjectId, "footer", footerData, rawThemeSettings, "preview", sharedGlobals, null);
+    }
+
+    const baseContext = await createBaseRenderContext(activeProjectId, rawThemeSettings, "preview", sharedGlobals);
+    const mainContent = await renderLiquidTemplate(activeProjectId, template, { ...baseContext, item: resolvedItem }, sharedGlobals);
+
+    const itemPageData = buildCollectionItemPageData(schema, resolvedItem, "");
+
+    let html = await renderPageLayout(
+      activeProjectId,
+      {
+        headerContent,
+        mainContent,
+        footerContent,
+        bodyClass: `collection-${schema.type} item-${safeSlug}`,
+      },
+      itemPageData,
+      rawThemeSettings,
+      "preview",
+      sharedGlobals,
+    );
+
+    html = injectBaseTag(html);
+    html = injectRuntimeScript(html, "standalone");
+    html = injectPreviewLinkGuard(html);
+
+    const token = generateToken(html);
+    res.json({ token });
+  } catch (error) {
+    console.error("Error creating collection preview:", error);
+    if (error.status === 404 || isProjectResolutionError(error)) {
+      return res.status(404).json({ error: error.message });
+    }
+    res.status(500).json({ error: "Failed to create collection preview", message: error.message });
+  }
 }
 
 /**
