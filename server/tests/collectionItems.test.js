@@ -32,6 +32,8 @@ const {
   deleteCollectionItem,
   bulkDeleteCollectionItems,
   duplicateCollectionItem,
+  reorderCollectionItems,
+  readRawCollectionItem,
 } = await import("../services/collectionService.js");
 const {
   getProjectCollectionSchemaPath,
@@ -498,6 +500,27 @@ describe("write-side storage", () => {
     const order = await readOrder("p", "portfolio");
     assert.equal(order[0], "alpha");
     assert.equal(order[1], dup.slug); // inserted immediately after source
+  });
+
+  it("reorders items, pruning stale slugs", async () => {
+    await setupCollection(
+      "p",
+      "portfolio",
+      portfolioSchema(),
+      [itemFile("a"), itemFile("b"), itemFile("c")],
+      ["a", "b", "c"],
+    );
+    await reorderCollectionItems("pid", "p", "portfolio", ["c", "a", "b", "ghost"]);
+    assert.deepEqual(await readOrder("p", "portfolio"), ["c", "a", "b"]);
+  });
+
+  it("readRawCollectionItem returns the on-disk file (orphans intact) or null", async () => {
+    await setupCollection("p", "portfolio", portfolioSchema(), [
+      itemFile("alpha", { settings: { title: "Alpha", subtitle: "orphan" } }),
+    ]);
+    const raw = await readRawCollectionItem("p", "portfolio", "alpha");
+    assert.equal(raw.settings.subtitle, "orphan"); // raw keeps out-of-schema keys
+    assert.equal(await readRawCollectionItem("p", "portfolio", "missing"), null);
   });
 });
 

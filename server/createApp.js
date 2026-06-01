@@ -10,6 +10,7 @@ import projectRoutes from "./routes/projects.js";
 import themeRoutes from "./routes/themes.js";
 import pagesRoutes from "./routes/pages.js";
 import menusRoutes from "./routes/menus.js";
+import collectionsRoutes from "./routes/collections.js";
 import mediaRoutes from "./routes/media.js";
 import previewRoutes from "./routes/preview.js";
 import exportRoutes from "./routes/export.js";
@@ -41,6 +42,7 @@ function mountEditorApiRoutes(app) {
   app.use("/api/pages", pagesRoutes);
   app.use("/api/preview", previewRoutes);
   app.use("/api/menus", menusRoutes);
+  app.use("/api/collections", collectionsRoutes);
   app.use("/api/media", mediaRoutes);
   app.use("/api/export", exportRoutes);
   app.use("/api/settings", appSettingsRoutes);

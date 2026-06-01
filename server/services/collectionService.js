@@ -494,6 +494,21 @@ export async function listCollectionItems(projectFolderName, collectionType, opt
 }
 
 /**
+ * Read the raw on-disk item file (no normalization), preserving any orphaned
+ * out-of-schema settings. Used by the update path so BLOCKER-2 orphan
+ * preservation works. Returns null if the file does not exist.
+ */
+export async function readRawCollectionItem(projectFolderName, collectionType, itemSlug) {
+  const itemPath = getProjectCollectionItemPath(projectFolderName, collectionType, itemSlug);
+  try {
+    return await fs.readJSON(itemPath);
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+}
+
+/**
  * Read and normalize a single item by slug. Returns null if the collection or
  * item file does not exist.
  */
@@ -847,4 +862,16 @@ export async function duplicateCollectionItem(
   // TODO(Phase 6): add collection:{type}/{newSlug} to media usage.
   void projectId;
   return item;
+}
+
+/**
+ * Persist a manual ordering for a collection (the reorder endpoint). The desired
+ * order is written verbatim via the atomic helper, with stale slugs (whose item
+ * file no longer exists) pruned.
+ */
+export async function reorderCollectionItems(projectId, projectFolderName, collectionType, order) {
+  const desired = Array.isArray(order) ? order : [];
+  await rewriteOrder(projectFolderName, collectionType, () => desired);
+  void projectId;
+  return { order: desired };
 }
