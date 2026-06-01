@@ -1,16 +1,18 @@
 # Collections System (Custom Post Types)
 
-> **Status**: Future Feature — 🚫 **BLOCKED**
+> **Status**: Future Feature — ✅ **Unblocked** (all blockers in [future-collections-blockers.md](future-collections-blockers.md) RESOLVED)
 > **Priority**: TBD
 > **Complexity**: High
-> **Revision**: 10 (Added a hard implementation gate: this feature MUST NOT be built until every blocker in [future-collections-blockers.md](future-collections-blockers.md) is RESOLVED. Revision 9 reworked Section 14 — forms-inside-collection-templates is an open question with documented interim behavior; that remains true.)
+> **Revision**: 12 (Pre-implementation review pass, 2026-06-01. Anchor verification clean. Resolved two further High-severity findings as `BLOCKER-2` — schema migration silently dropped removed-optional-field data; fix = warn-before-drop in Section 4 — and `BLOCKER-3` — the `menu.liquid` active-state rewrite silently broke highlighting on existing pages; fix = wire `currentCanonicalPath` into the existing render paths in Section 6. Also folded in three lower-severity Section 6/13 gap fixes: SeoTag preserves current `og:image` behavior when `siteUrl` is unset (no page regression), `resolveWidgetPageLinks` drops its empty-map short-circuit, and two-pass export validation runs before any disk write. Revision 11 resolved `BLOCKER-1` via approach C — collection-type schemas/templates are theme-only; presets seed only `collections/` item data. Revision 9 reworked Section 14 — forms-inside-collection-templates remains an open question with documented interim behavior.)
 >
-> ⛔ **Do not implement this spec yet.** A latent design conflict — preset collection-type overrides
-> are destroyed by the wholesale theme-update replace (silent schema revert + user data loss) — is
-> tracked in **[future-collections-blockers.md](future-collections-blockers.md)** as `BLOCKER-1`.
-> Implementation is gated at **Gate 0** (Section 19) until that document has **zero** unresolved
-> blockers, or each blocker has an agreed remediation written back into this spec. Append any newly
-> discovered blockers to that document.
+> ✅ **All blockers RESOLVED** (`BLOCKER-1`, `BLOCKER-2`, `BLOCKER-3`). `BLOCKER-1`: preset
+> collection-type overrides destroyed by the wholesale theme-update replace → fixed by making
+> collection-type schemas/templates theme-only (Section 5). `BLOCKER-2`: schema migration silently
+> dropped user data in removed optional fields → fixed by warn-before-drop (Section 4). `BLOCKER-3`:
+> `menu.liquid` active-state rewrite silently broke highlighting on existing pages → fixed by wiring
+> `currentCanonicalPath` into the existing render paths (Section 6). See
+> [future-collections-blockers.md](future-collections-blockers.md). Append any newly discovered
+> blockers to that document; implementation re-gates at **Gate 0** (Section 19) if any new blocker opens.
 
 A comprehensive plan for implementing a Collections system in Widgetizer that allows users to create structured content types like Portfolios, Team Members, Testimonials, Blog Posts, etc.
 
@@ -330,15 +332,23 @@ When a theme bumps `schemaVersion`, existing item data may have stale fields or 
 **Strategy**:
 
 - On read, if `item.schemaVersion < schema.schemaVersion`, `collectionService` returns an **in-memory normalized item**:
-  - Drop fields no longer in schema, preserving their values under the in-memory-only `_archived` map
+  - **Separate** (do not erase) fields no longer in the schema into the in-memory `_archived` map, so the editor form and render only deal with current-schema fields. The on-disk values are **not** touched by a read.
   - Fill missing required fields with empty defaults (`""`, `false`, `0`, `{ href: "", target: "_self" }`, etc. based on field type)
   - Update `item.schemaVersion` to current
   - Set `item.invalid = true` and populate `item.validationErrors = [{ fieldId, reason }]` if any required field has a falsy value
-- Migration is **non-destructive on read**: nothing is persisted by GET handlers. The normalized data is persisted on the next successful save, duplicate, or explicit future migration action.
-- `_archived` is **in-memory only**, recomputed on each read. It is not written to disk. Reason: persisting it would bloat JSON forever; users can re-add the field via the schema if needed and the data is gone if they don't, which matches the rest of Widgetizer's "no hidden state" rule.
+- Migration is **non-destructive on read**: nothing is persisted by GET handlers.
+- **Orphaned values are never dropped silently** (resolution of `BLOCKER-2` — see [future-collections-blockers.md](future-collections-blockers.md)). `_archived` is computed in memory on each read, but the **on-disk `settings` object retains the orphaned keys**. The write path (`buildCollectionItemData` / `writeCollectionItem`, Section 10) must **merge back any on-disk settings keys that are absent from both the current schema and the incoming payload**, so an ordinary save of a normalized item cannot lose data in a dropped field. This is strictly safer than pages/globals, which keep orphaned widget/page settings on disk indefinitely with no affordance to clean them up (verified: `persistPageWithMediaTracking` writes page data verbatim and widget rendering merges defaults *under* stored settings — neither prunes).
+- **Discard is explicit and confirmed.** When an item has any `_archived` entries, the editor surfaces an "Archived data" notice listing each orphaned `fieldId` and a preview of its value, with a **Discard archived data** action gated behind a confirmation modal (reuse `useConfirmationAction`). Only that action removes the orphaned keys from `settings` and rewrites the file. Saving the item for any other reason preserves the archived values.
 - Theme authors can ship optional `migrations.json` per collection for custom transforms (Phase 3 only — not v1).
 
-If the user switches **themes** (not just upgrades), the new theme may have a completely different schema for the same collection `type`. The same normalization runs: unknown fields go to `_archived`, missing required fields are filled with empties and the item is flagged `invalid: true`. The user is responsible for either filling the new required fields or deleting the collection items.
+If the user switches **themes** (not just upgrades), the new theme may have a completely different schema for the same collection `type`. The same normalization runs: unknown fields go to `_archived` (and stay on disk until explicitly discarded), missing required fields are filled with empties and the item is flagged `invalid: true`. The user is responsible for either filling the new required fields or deleting the collection items; no field data is lost without an explicit confirmed discard.
+
+> **Presets never cause schema drift.** Because collection-type schemas are theme-only (presets seed
+> only `collections/` item data — see Section 5, "Preset Seeding"), the **only** source of schema
+> change is the theme bumping its own `schemaVersion`. A preset-derived project tracks exactly the
+> same `collection-types/` as a non-preset project on the same theme, so the wholesale theme-update
+> replace never reverts a preset-only field, and normalization above never has preset-specific fields
+> to archive. This is what closed `BLOCKER-1`.
 
 This avoids the "schema and data drifted" trap that bites WordPress installs.
 
@@ -352,12 +362,11 @@ Collections follow the same philosophy as the rest of the [theme update system](
 
 Add `"collection-types"` to the `UPDATABLE_PATHS` array in [server/services/themeUpdateService.js:21](../server/services/themeUpdateService.js#L21) (currently `["layout.liquid", "assets", "widgets", "snippets", "locales", "screenshot.png"]`). Treat it like `widgets/` — the entire folder is replaced on update.
 
-> ⛔ **BLOCKER-1 ([future-collections-blockers.md](future-collections-blockers.md)).** This
-> wholesale replace conflicts with the "Preset Seeding" subsection below, which lets a preset
-> *overwrite* the theme's collection-type schema at creation. Because updates read only the theme
-> source (never `presets/`), the first theme update silently reverts a preset-derived project to the
-> theme's base schema and — via Section 4 normalization — drops user data in preset-only fields.
-> **Do not implement this allowlist change until BLOCKER-1 is resolved.**
+> ✅ **Safe under the `BLOCKER-1` resolution.** This wholesale replace was the dangerous half of
+> `BLOCKER-1` only because presets could *overwrite* the theme's collection-type schema at creation.
+> Presets can no longer touch `collection-types/` (see "Preset Seeding" below), so a project's copy is
+> always the theme's own schema. Replacing it from the theme source on update is therefore consistent
+> with creation — there is nothing preset-specific to revert and no preset-only field data to drop.
 
 `collections/` (under `data/projects/{projectFolderName}/`) is **protected user content**, in the same category as `pages/` and `uploads/`. It must never appear in the allowlist.
 
@@ -419,41 +428,39 @@ This validation applies symmetrically: even items created via API or imported fr
 
 #### Preset Seeding
 
-> ⛔ **BLOCKER-1 ([future-collections-blockers.md](future-collections-blockers.md)).** Step 1 below
-> lets a preset *overwrite* the theme's `collection-types/` at creation. The "Theme Update Allowlist"
-> subsection above then replaces that same folder wholesale from the **theme** source on every update
-> (presets are creation-time only — [theme-presets.md:142](theme-presets.md)). Net effect: the first
-> theme update reverts a preset-derived project to the theme's base schema and silently drops
-> preset-only field data. **The preset → collection-types interaction must be resolved before this
-> seeding logic is implemented.** Seeding of `collections/` (item *data*) is not affected — that path
-> only writes collection items, never pages, and never runs during updates.
+> ✅ **`BLOCKER-1` resolution (candidate approach C — collection-types are theme-only).** Presets may
+> seed **only `collections/` (item data)**. They **may not** ship a `collection-types/` folder — schemas
+> and `template.liquid` files are owned exclusively by the theme. This removes the conflict at its
+> root: a preset can never introduce a schema field the theme lacks, so the wholesale theme-update
+> replace ("Theme Update Allowlist" above) has nothing preset-specific to revert and Section 4
+> normalization never has a preset-only field to silently archive. The cost is a documented
+> limitation: a theme that wants a richer collection for a given preset must define that richer schema
+> as the theme's own base schema (or as a distinct collection `type`), not as a per-preset overlay.
 
 Project presets (currently `themes/{theme}/presets/{preset}/`) bundle starter content — menus, templates, and theme.json overrides — that ship with a new project created from that preset. Today's preset structure is resolved by `resolvePresetPaths` in [server/controllers/themeController.js:530-590](../server/controllers/themeController.js), which returns `{ templatesDir, menusDir, settingsOverrides }`.
 
-For collections, **extend `resolvePresetPaths` to also return `collectionTypesDir` and `collectionsDir`** if those folders exist under the preset:
+For collections, **extend `resolvePresetPaths` to also return `collectionsDir`** (item data only) if that folder exists under the preset. It must **not** return a `collectionTypesDir`:
 
 ```
 themes/arch/presets/blog-starter/
 ├── preset.json                       (theme.json settings overrides)
 ├── menus/
 ├── templates/
-├── collection-types/                 (optional — overrides theme's collection-types/)
-│   └── posts/
-│       ├── schema.json
-│       └── template.liquid
-└── collections/                      (optional — seeds project's collections/)
-    └── posts/
+└── collections/                      (optional — seeds project's collections/ item DATA only)
+    └── posts/                         (must match a collection `type` defined by the THEME)
         ├── hello-world.json
         └── why-widgetizer-rocks.json
 ```
 
+A `collection-types/` folder inside a preset is **rejected at theme upload time** (extend the Theme Upload Validation subsection above to fail the upload, listing the offending preset) and **ignored** if one somehow reaches disk — it is never copied into a project. Preset-seeded items under `collections/{type}/` whose `{type}` is not defined by the theme are skipped with a logged warning (the same orphaned-data behavior as "Collection Removal"); they do nothing until a theme defines that `type`.
+
 Project creation flow ([server/controllers/projectController.js:154-298](../server/controllers/projectController.js)) updates:
 
-1. After `copyThemeToProject`, if the preset has a `collection-types/` dir, **copy it into the project, overwriting** the theme's defaults. This lets a preset ship a different schema for the same collection type (e.g., a `blog-starter` preset that adds extra fields to `posts`).
+1. The project's `collection-types/` always comes from the theme via the existing `copyThemeToProject` — **no preset overwrite step**. Every project on a given theme version tracks identical collection schemas.
 2. If the preset has a `collections/` dir, **copy items into `data/projects/{folder}/collections/`**, regenerating UUIDs and timestamps on each item (same logic as project duplication's `remapDuplicatedProjectUuids`).
-3. After both copies, the existing `refreshMediaUsageAfterStructuralChange(projectId, "project creation")` call already runs at line 285 — once `refreshAllMediaUsage` scans collections (Section 8 — Media Usage Tracking), seeded items' media is automatically tracked.
+3. After the copy, the existing `refreshMediaUsageAfterStructuralChange(projectId, "project creation")` call already runs at line 285 — once `refreshAllMediaUsage` scans collections (Section 8 — Media Usage Tracking), seeded items' media is automatically tracked.
 
-If a theme has no presets that seed collections, this is a no-op. If a preset does seed collections, the user gets sample content they can immediately edit or delete.
+If a theme has no presets that seed collection data, this is a no-op. If a preset does seed `collections/`, the user gets sample content they can immediately edit or delete, validated against the theme's schema like any other item.
 
 ---
 
@@ -497,7 +504,7 @@ Every publish-mode branch in the following tags prepends `globals.outputPathPref
 | Preload `<link rel="preload">` `href` and `imagesrcset` | both emitted raw at [renderHeaderAssets.js:33 and :42](../src/core/tags/renderHeaderAssets.js#L33) (the `{% enqueue_preload %}` tag only stores options) | prefix the `href` and **each URL** inside `imagesrcset` via `prefixInternalHref`. `imagesrcset` is a comma-separated list of `url widthDescriptor` pairs; split, prefix each URL independently, rejoin. The fix lives in `renderHeaderAssets.js`'s preload rendering loop, **not** in `enqueuePreload.js`. |
 | `renderEnqueuedAssetTags` (used by morph render) | `assets/${filepath}` per enqueued asset        | `${outputPathPrefix}assets/${filepath}` per enqueued asset      |
 | `{% seo %}` canonical link                       | `${siteUrl}/${slug}.html` when siteUrl set; empty otherwise | **No change to SeoTag itself.** Collection items always set `seo.canonical_url` explicitly in the page-shaped object so the auto-derive fallback isn't reached for them. Pages continue to use the existing fallback unchanged. |
-| `{% seo %}` `og:image` / `twitter:image`         | `/${imagePath}/${filename}` directly (line 110) | **Independent of `outputPathPrefix`.** SeoTag is changed to ignore the depth-aware `imagePath` global for social images and instead build absolute URLs from `siteUrl` + a constant `assets/images` base. When `siteUrl` is unset, social image tags are **omitted** (a relative URL is useless to social platforms). See "SeoTag changes" below. |
+| `{% seo %}` `og:image` / `twitter:image`         | `/${imagePath}/${filename}` directly (line 110) | **Independent of `outputPathPrefix`.** SeoTag stops using the depth-aware `imagePath` global for social images and uses a **constant** `assets/images` base. Output forms are **unchanged from today**: `${siteUrl}/assets/images/...` when `siteUrl` is set, root-absolute `/assets/images/...` when it isn't. No tag is dropped; pages stay byte-for-byte identical. See "SeoTag changes" below. |
 
 `createBaseRenderContext` in [server/services/renderingService.js](../server/services/renderingService.js) sets `imagePath` and `filePath` for publish mode. Both must consult `outputPathPrefix`:
 
@@ -516,30 +523,38 @@ const fileBasePath =
 
 `SeoTag`'s `resolveImageUrl` ([src/core/tags/SeoTag.js:98-130](../src/core/tags/SeoTag.js#L98)) currently builds `/${imagePath}/${publicFilename}`. With the depth-aware `imagePath` from this section, that would produce `/../assets/images/foo.jpg` (no siteUrl) or `https://site.com/../assets/images/foo.jpg` (with siteUrl) — both broken.
 
-**Fix**: SeoTag stops consuming the depth-aware `imagePath` global for social images entirely. It uses a constant publish base (`assets/images`) and **only emits `og:image` / `twitter:image` meta tags when `siteUrl` is set**. Without `siteUrl`, social image meta is useless anyway — social platforms cannot fetch a relative URL — so omitting it is correct behavior.
+**Fix**: SeoTag stops consuming the depth-aware `imagePath` global for social images and instead uses a **constant** publish base, `assets/images`. The existing two output forms are **preserved exactly** (decision on Finding 2 from the pre-implementation review):
+
+- `siteUrl` set → absolute `${siteUrl}/assets/images/${publicFilename}` (unchanged from today).
+- `siteUrl` unset → **root-absolute** `/assets/images/${publicFilename}` (unchanged from today). A leading-slash URL is depth-independent, so it is correct from both root pages and nested item pages — no `og:image` is dropped, and existing page output stays **byte-for-byte identical** (this is what keeps the page regression test and the existing `tags.test.js` "uses relative path in publish mode when no siteUrl" case green).
+
+> **Why not omit when `siteUrl` is unset?** An earlier draft omitted social-image meta without a `siteUrl` (reasoning a relative URL is useless to crawlers). That was a silent behavior change to existing pages and contradicted this section's own "byte-for-byte identical for pages" guarantee plus an existing passing test. The review chose to **preserve** current behavior; only the `imagePath` source changes (constant base instead of the depth-aware global).
 
 Concretely, `resolveImageUrl` in `SeoTag.js` becomes:
 
 ```js
+const PUBLISH_IMAGE_BASE = "assets/images"; // constant — NOT the depth-aware imagePath global
+
 function resolveImageUrl(rawValue, siteUrl, mediaFiles) {
   if (!rawValue) return "";
   if (rawValue.startsWith("http")) return rawValue;
-  if (!siteUrl) return ""; // social images require an absolute URL
 
   const filename = rawValue.split("/").pop();
   const publicFilename = getPublicImageFilename(filename, mediaFiles);
-  const cleanSiteUrl = siteUrl.replace(/\/$/, "");
-  return `${cleanSiteUrl}/assets/images/${publicFilename}`;
+  const resolvedPath = `/${PUBLISH_IMAGE_BASE}/${publicFilename}`; // root-absolute
+
+  if (siteUrl) {
+    return `${siteUrl.replace(/\/$/, "")}${resolvedPath}`;
+  }
+  return resolvedPath; // unchanged from current behavior
 }
 ```
 
-The `imagePath` argument is dropped from `resolveImageUrl`'s signature. Callers in `SeoTag.render` update accordingly. The two callers at lines 63 and 79 stop passing `imagePath`.
-
-Two SeoTag tag emitters (`og:image` and `twitter:image`) are then **skipped** when `resolveImageUrl` returns `""` — wrap each emit in `if (ogImageUrl) ...`. The existing `hasImage` gate already does this for og_image; do the same gate for the twitter_image emit at line 79.
+The only change to the signature is that the depth-aware `imagePath` argument is **dropped** (it's replaced by the `PUBLISH_IMAGE_BASE` constant). Callers in `SeoTag.render` (the two at lines 63 and 79) stop passing `imagePath`. The existing `hasImage` gate on the `og:image`/`twitter:image` emits is unchanged — emits still happen whenever an image value resolves, exactly as today.
 
 In-body `{% image %}` and `{% asset %}` continue to use the depth-aware `imagePath` — they're rendered inside the page body and benefit from relative paths so the export remains portable across deploy targets.
 
-This is the **only** SeoTag change. Canonical URLs are not touched; collection items always set `seo.canonical_url` explicitly so the existing fallback path is untouched for them.
+This is the **only** SeoTag change. Canonical URLs are not touched; collection items always set `seo.canonical_url` explicitly so the existing fallback path is untouched for them. Because pages keep their exact current social-image output, no existing SeoTag test needs to change.
 
 ### Link resolution changes
 
@@ -609,9 +624,10 @@ Notes on the guards:
 
 The RFC 3986 scheme regex is strict — it requires a letter then letters/digits/`+`/`-`/`.` then a colon — so it won't false-positive on a path component that happens to contain a colon mid-string (e.g., `foo/bar:baz.html` is treated as a relative path, not a URI).
 
-Apply it at three call sites in [server/services/renderingService.js](../server/services/renderingService.js):
+Apply it at the following call sites in [server/services/renderingService.js](../server/services/renderingService.js):
 
 - **`resolveLinkValue` (line 130)** — after the `pageUuid`-driven slug computation, pass the resulting `href` through `prefixInternalHref(href, outputPathPrefix)`. The function must thread `outputPathPrefix` in from `globals`; same plumbing as the asset-tag change.
+- **`resolveWidgetPageLinks` (line 170)** — this wrapper drives `resolveLinkValue` for widget and block link settings, and it has the **same `pagesByUuid.size === 0` early-return short-circuit** (line 170) as the menu function (Finding 3 from the pre-implementation review). It must (a) thread `outputPathPrefix` through to `resolveLinkValue`, and (b) **not** short-circuit purely because the page map is empty — a widget holding a hand-typed custom URL (e.g. `about.html`) on a nested item page still needs depth-prefixing even when no pages have UUIDs. Drop the `pagesByUuid.size === 0` clause (keep the `!widgetData` guard); with a non-empty map behavior is unchanged, and at root (`outputPathPrefix === ""`) the prefixer is a no-op. Without this, widget custom-URL links break on nested pages in the empty-map case — the exact gap fixed for menus, left open for widgets.
 - **`resolveMenuItemLinks` (line 209)** — for **every** menu item, regardless of whether it had a `pageUuid`. This fixes the gap where custom URLs typed in the menu editor (`SortableItem.jsx:96` explicitly clears `pageUuid` for custom URLs) were passing through unchanged. **Also remove the existing `pagesByUuid.size === 0` early-return short-circuit at line 210** — it was a "nothing to resolve" optimization that's no longer valid: even with an empty page map, custom URLs in menu items still need depth-prefixing. The new function structure:
   ```js
   function resolveMenuItemLinks(menuItems, pagesByUuid, outputPathPrefix) {
@@ -683,6 +699,22 @@ Because menu items now carry a prefixed `link` (e.g., `../about.html`) for href 
 The corresponding global `currentCanonicalPath` is set per render:
 - For pages: `${pageData.slug}.html` (or `index.html` for the homepage; matches existing page output filenames).
 - For collection items: `${slugPrefix}/${itemSlug}.html`.
+
+> ⚠️ **Must be wired into the EXISTING page render paths, not just the collection-item loop** (Finding 1
+> from the pre-implementation review). `menu.liquid` lives in `src/core/snippets/` and is rendered by
+> **every** page, so once the snippet compares `currentCanonicalPath` (instead of the old
+> `pageSlug | append: '.html'`), any render path that does **not** set `currentCanonicalPath` loses
+> all menu active-state highlighting (`is-active` + `aria-current`) silently. The current code sets
+> only `pageSlug` in exactly these places, and each must **also** set `currentCanonicalPath` (and the
+> resolved menu items must carry `canonicalPath`):
+> - `server/controllers/previewController.js` (~line 67, preview render) — `currentCanonicalPath = ${pageData.slug}.html` (or `index.html` for the homepage).
+> - `server/controllers/exportController.js` (~line 286, the existing **page** export loop, *not* only the Phase 2 item loop) — same value.
+> - the `renderSingleWidget` morph path in `previewController.js` (~lines 276–280) — set it from the page being morphed, or leave menus inactive there if no page context exists.
+>
+> This is the same "two correct-looking changes combine into a silent regression" shape as `BLOCKER-1`,
+> so it is called out explicitly. The Phase-2 regression suite **must** include a page-level active-state
+> assertion (a page whose menu links to itself renders `is-active`/`aria-current`), not only the
+> byte-equality layout test — the byte test passes even if active-state silently breaks.
 
 ### Menu active-state snippet update
 
@@ -1422,7 +1454,9 @@ Update [server/controllers/exportController.js](../server/controllers/exportCont
 
 1. **Load validated collection schemas** from the project copy via `collectionService.listCollectionSchemas(projectFolderName)`.
 
-2. **Two-pass validation** (Section 5): for every collection where `hasItemPages: true`, load every item and check `invalid`. Collect all validation errors across all collections into a single error report. If any item is invalid, **fail the export with status 400** and include the full error list in the response. Do not render or write any HTML yet. Existing page export still runs first; collection validation gates after pages are listed but before any HTML is written.
+2. **Two-pass validation** (Section 5): for every collection where `hasItemPages: true`, load every item and check `invalid`. Collect all validation errors across all collections into a single error report. If any item is invalid, **fail the export with status 400** and include the full error list in the response.
+
+   > **Ordering (Finding 5 from the pre-implementation review).** This validation must run **before the export writes anything to disk** — i.e. before `generateExportSiteIcons` (favicons/manifest), `sitemap.xml`, `robots.txt`, and the existing page-render loop, all of which currently write into the live versioned output dir as they go (`exportController.js` writes page HTML inside the page loop, favicons/sitemap/robots earlier). An earlier draft said "existing page export still runs first," which contradicts the "writes no HTML on failure" guarantee: if pages ran first, page HTML + sitemap + robots + favicons would already be on disk when collection validation throws, leaving an orphan partial export (a fresh `{folder}-v{N}` dir, so prior exports are untouched — but the guarantee is still violated). Correct order: **load pages + load & validate collection schemas/items first; only if zero errors, begin any disk writes** (favicons → pages → collection items → sitemap/robots). Pages and items can then be written in either order since validation has already gated the whole run.
 
 3. **Ensure subdirectories exist** before rendering items: for each `hasItemPages` collection, `await fs.ensureDir(path.join(outputDir, schema.slugPrefix))`.
 
@@ -1493,7 +1527,7 @@ Notes:
 - `slug` is path-shaped (`portfolio/project-alpha`) so themes that read `{{ page.slug }}` for analytics/identification get a useful value. It is **not** used for body class — that's overridden via `contentSections.bodyClass`.
 - `id` keeps the dash-shaped form (`portfolio-project-alpha`) for stable identifiers in validation reports and any consumer that needs a CSS-safe identifier.
 - `canonical_url` is **always** set explicitly when `siteUrl` is valid. The SeoTag canonical fallback is therefore not used for collection items.
-- `og_image` defaults to the value of the schema field flagged `usedAsOgImage: true`. If no field is flagged, `og_image` is empty and SeoTag skips the `og:image` and `twitter:image` meta tags. With the Section 6 SeoTag change, `og_image` also requires `siteUrl` to be set — otherwise no social image meta tag is emitted regardless.
+- `og_image` defaults to the value of the schema field flagged `usedAsOgImage: true`. If no field is flagged, `og_image` is empty and SeoTag skips the `og:image` and `twitter:image` meta tags (the existing `hasImage` gate). When a value is present, the Section 6 SeoTag change emits it as `${siteUrl}/assets/images/...` if `siteUrl` is set, or root-absolute `/assets/images/...` if not — matching how pages behave (Finding 2 resolution). A relative social URL is of limited use to crawlers, so for best results set `siteUrl`, but the tag is **not** suppressed without it.
 - `og_type: "article"` is appropriate for individual item pages (versus `"website"` for pages).
 - `twitter_card: "summary_large_image"` is the default when an `og_image` is present; SeoTag's existing logic downgrades to `"summary"` when no image.
 
@@ -1813,7 +1847,7 @@ The collection's listing page shows the empty state ("No items yet"). Export ski
 | `server/tests/collections.test.js`                   | CRUD/schema/slug/UUID coverage; atomic write + crash-recovery cases |
 | `server/tests/collectionExport.test.js`              | Phase 2 export coverage (depth-aware paths, SEO mapping, sitemap, two-pass validation) |
 | `server/tests/linkPrefixer.test.js`                  | Pure unit tests for `prefixInternalHref` and `normalize` (WHATWG step-1 + step-2 normalization, type guards, every URI-scheme / anchor / query / root-absolute passthrough rule, internal prefixing) |
-| `server/tests/seoTag.test.js`                        | Unit tests for the SeoTag changes (Section 13): absolute `og:image` URL only when `siteUrl` set, social tags omitted otherwise, canonical pass-through, page byte-equality regression |
+| `server/tests/seoTag.test.js`                        | Unit tests for the SeoTag changes: absolute `og:image` URL when `siteUrl` set, **root-absolute `/assets/images/...` when unset (current behavior preserved — existing `tags.test.js` cases stay green)**, canonical pass-through, page byte-equality regression |
 | `themes/arch/collection-types/portfolio/schema.json` | Example portfolio collection (with `template.liquid` for Phase 2) |
 | `themes/arch/collection-types/team/schema.json`      | Example team collection       |
 
@@ -1825,11 +1859,11 @@ The collection's listing page shows the empty state ("No items yet"). Export ski
 | `server/createApp.js`                         | Register collections routes                      |
 | `server/services/mediaUsageService.js`        | Add collection extract/update/sync/remove fns; extend `refreshAllMediaUsage` to scan `collections/*/*.json` |
 | `server/services/themeUpdateService.js`       | Add `collection-types` to `UPDATABLE_PATHS`      |
-| `server/services/renderingService.js`         | Register `collection` Liquid filter; thread `outputPathPrefix` and `currentCanonicalPath` into render contexts; in `createBaseRenderContext`, build a per-render shallow copy of `site_icons` with each href prefixed by `outputPathPrefix`; update `resolveLinkValue` and `resolveMenuItemLinks` to use the new `prefixInternalHref` helper (covering both `pageUuid`-resolved and custom URLs) and to attach `canonicalPath` to each resolved menu item (using the shared `normalize` helper for custom URLs); update wrapper `resolveMenuPageLinks` and its two call sites (widget settings ~line 639, block settings ~line 659) to thread `outputPathPrefix`; expose `getCollectionItems` loader on globals (loader applies `resolveCollectionItemLinks` and computes `item.url`); **export a new `renderLiquidTemplate(projectId, templateString, context, sharedGlobals)` helper** that uses the cached per-project engine; `renderPageLayout` honors a new `contentSections.bodyClass` override; `imagePath` and `filePath` globals become depth-prefixed in publish mode |
+| `server/services/renderingService.js`         | Register `collection` Liquid filter; thread `outputPathPrefix` and `currentCanonicalPath` into render contexts; in `createBaseRenderContext`, build a per-render shallow copy of `site_icons` with each href prefixed by `outputPathPrefix`; update `resolveLinkValue`, `resolveMenuItemLinks`, **and `resolveWidgetPageLinks` (drop its `pagesByUuid.size === 0` short-circuit, Finding 3)** to use the new `prefixInternalHref` helper (covering both `pageUuid`-resolved and custom URLs) and to attach `canonicalPath` to each resolved menu item (using the shared `normalize` helper for custom URLs); update wrapper `resolveMenuPageLinks` and its two call sites (widget settings ~line 639, block settings ~line 659) to thread `outputPathPrefix`; **set `currentCanonicalPath` (and `canonicalPath` on menu items) in the existing page render paths — `previewController.js` and the page-export loop in `exportController.js` — not just the collection-item loop (Finding 1)**; expose `getCollectionItems` loader on globals (loader applies `resolveCollectionItemLinks` and computes `item.url`); **export a new `renderLiquidTemplate(projectId, templateString, context, sharedGlobals)` helper** that uses the cached per-project engine; `renderPageLayout` honors a new `contentSections.bodyClass` override; `imagePath` and `filePath` globals become depth-prefixed in publish mode |
 | `server/controllers/exportController.js`      | Implement collection item rendering loop (Phase 2) using `renderLiquidTemplate` + `resolveCollectionItemLinks`; two-pass validation; subdirectory creation; sitemap/robots extension; manifest.json `collections` field; depth-aware `/uploads/` rewrite; pass `contentSections.bodyClass` for collection items |
-| `src/core/tags/SeoTag.js`                     | Drop `imagePath` from `resolveImageUrl` signature; require `siteUrl` for social images; skip `og:image` and `twitter:image` emits when no usable URL is available |
-| `server/controllers/themeController.js`       | Theme upload validates `collection-types/*/schema.json`; `resolvePresetPaths` returns `collectionTypesDir` and `collectionsDir` when present |
-| `server/controllers/projectController.js`     | After project creation, copy preset `collection-types/` (overwriting theme defaults) and preset `collections/` (regenerating UUIDs/timestamps) when present |
+| `src/core/tags/SeoTag.js`                     | Drop the depth-aware `imagePath` arg from `resolveImageUrl`; use a constant `assets/images` base; **preserve both current output forms** (absolute with `siteUrl`, root-absolute without). Existing `hasImage` emit gates unchanged — no existing test changes |
+| `server/controllers/themeController.js`       | Theme upload validates `collection-types/*/schema.json` and **rejects** any preset that contains a `collection-types/` folder; `resolvePresetPaths` returns `collectionsDir` (item data only) when present — never a `collectionTypesDir` |
+| `server/controllers/projectController.js`     | After project creation, copy preset `collections/` item data (regenerating UUIDs/timestamps, skipping items whose `type` the theme doesn't define) when present. Collection-type schemas always come from the theme via `copyThemeToProject` — no preset overwrite |
 | `server/utils/linkEnrichment.js`              | Extend `cleanupDeletedPageReferences`, `enrichNewProjectReferences`, `remapDuplicatedProjectUuids` to walk collection items |
 | `src/core/snippets/menu.liquid`               | Compare `item.canonicalPath` vs new `currentCanonicalPath` global for active state (instead of `pageSlug + ".html"`) |
 | `src/core/tags/assetTag.js`                   | Publish-mode URL uses `outputPathPrefix` |
@@ -1951,9 +1985,10 @@ The collection's listing page shows the empty state ("No items yet"). Export ski
 
 ## 18. Open Questions / Explicitly Deferred
 
-> ⛔ **Separate from open questions: hard blockers gate the whole feature.** Tracked in
-> [future-collections-blockers.md](future-collections-blockers.md). Unlike the deferred items below
-> (which can be punted to a later phase), an unresolved blocker means **no code lands at all**. See
+> ℹ️ **Separate from open questions: hard blockers gate the whole feature.** Tracked in
+> [future-collections-blockers.md](future-collections-blockers.md), currently **CLEAR** (all
+> resolved). Unlike the deferred items below (which can be punted to a later phase), an *unresolved*
+> blocker means **no code lands at all** — if a new one is logged there, implementation re-gates. See
 > Section 19 Gate 0.
 
 1. **Drafts and publish states** — current plan: items are always "published". A `draft: true` flag could come in Phase 3 if needed.
@@ -1975,10 +2010,10 @@ The collection's listing page shows the empty state ("No items yet"). Export ski
 To reduce risk, build this in gated phases:
 
 **Gate 0 — Prerequisites before any code lands:**
-- 🚫 **All blockers in [future-collections-blockers.md](future-collections-blockers.md) RESOLVED.** Gate 0 is **not** clear while any blocker is open. Currently **`BLOCKER-1` is UNRESOLVED**, so no Collections code may land.
+- ✅ **All blockers in [future-collections-blockers.md](future-collections-blockers.md) RESOLVED.** `BLOCKER-1` (approach C — collection-type schemas/templates theme-only, Section 5), `BLOCKER-2` (warn-before-drop on schema migration, Section 4), and `BLOCKER-3` (wire `currentCanonicalPath` into existing render paths, Section 6) are all resolved in writing. A 2026-06-01 pre-implementation review (clean anchor verification + three additional Section 6/13 gap fixes) is folded in. Gate 0 re-gates if any new blocker opens.
 - ✅ Asset-path strategy decided (Section 6: depth-aware relative paths via `outputPathPrefix`)
 - ✅ Item UUID decision (Section 2: yes, in v1)
-- ❌ Preset seeding decision (Section 5: extend `resolvePresetPaths`) — **reopened by `BLOCKER-1`**: preset collection-type overrides are destroyed by the wholesale theme-update replace. Must be resolved before this counts as decided.
+- ✅ Preset seeding decision (Section 5): presets seed `collections/` item data only; `resolvePresetPaths` returns `collectionsDir` (no `collectionTypesDir`). Resolves `BLOCKER-1`.
 - ⏸️ Forms-in-templates decision **deferred** (Section 14: open question; build interim behavior — don't wire forms into templates yet)
 - ✅ SEO field mapping spelled out (Section 13)
 

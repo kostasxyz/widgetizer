@@ -1,11 +1,12 @@
 # Collections — Implementation Blockers
 
-> **Status: 🚫 BLOCKED.** Do **not** start implementing the Collections feature
-> ([future-collections.md](future-collections.md) spec /
-> [future-collections-plan.md](future-collections-plan.md) execution plan) until **every**
-> blocker in this document is marked **RESOLVED**. A blocker is only RESOLVED once the chosen
-> remediation has been written back into the spec — not merely decided in conversation. This is
-> the hard prerequisite for **Gate 0** (spec Section 19) and **Phase 0** of the plan.
+> **Status: ✅ CLEAR.** All blockers in this document are **RESOLVED**, with each remediation written
+> back into the spec ([future-collections.md](future-collections.md)) and plan
+> ([future-collections-plan.md](future-collections-plan.md)). **Gate 0** (spec Section 19) and
+> **Phase 0** of the plan are cleared. This document stays the registry: **append any newly
+> discovered blocker here** and re-gate implementation until it too is RESOLVED. A blocker is only
+> RESOLVED once the chosen remediation is written back into the spec — not merely decided in
+> conversation.
 
 This document is a companion to the Collections spec and plan. The spec describes *what to build*;
 this document tracks *what must be settled before any of it is built*. It exists because the spec
@@ -29,14 +30,24 @@ as currently written.
 
 | ID          | Title                                                                 | Severity                         | Status         |
 | ----------- | --------------------------------------------------------------------- | -------------------------------- | -------------- |
-| BLOCKER-1   | Preset collection-type overrides are destroyed by theme updates       | High — silent schema revert + data loss | ❌ UNRESOLVED  |
+| BLOCKER-1   | Preset collection-type overrides are destroyed by theme updates       | High — silent schema revert + data loss | ✅ RESOLVED — approach C (spec §5 "Preset Seeding") |
+| BLOCKER-2   | Schema migration silently drops user data in removed optional fields  | High — silent data loss on theme upgrade/switch | ✅ RESOLVED — warn-before-drop (spec §4) |
+| BLOCKER-3   | `menu.liquid` active-state rewrite silently breaks highlighting on all existing pages | High — silent UX/a11y regression | ✅ RESOLVED — wire `currentCanonicalPath` into existing render paths (spec §6) |
+
+> The pre-implementation review (2026-06-01) that surfaced BLOCKER-2 and BLOCKER-3 also found three
+> lower-severity spec gaps, all folded into the spec in the same pass — see
+> "Pre-implementation review findings" below.
 
 ---
 
 ## BLOCKER-1 — Preset collection-type overrides are destroyed by theme updates
 
 - **Severity:** High — silent schema reversion and user data loss, no warning to the user.
-- **Status:** ❌ UNRESOLVED
+- **Status:** ✅ RESOLVED (2026-06-01) — candidate approach C. Collection-type schemas and templates
+  are theme-only; presets may seed only `collections/` item data, never `collection-types/`. Written
+  into spec Section 5 ("Preset Seeding"), Section 5 ("Theme Update Allowlist"), Section 4 (migration
+  note), the Files-Touched table, and Section 19 Gate 0; and into plan Phase 0 and Phase 9. See
+  "Resolution" below.
 - **Discovered:** 2026-05-29
 - **Affects:** Spec Section 5 (Theme Updates and Collection Lifecycle → Preset Seeding) and
   Section 4 (Schema Versioning and Migration).
@@ -147,12 +158,142 @@ These are options to evaluate, not a recommendation:
   a project-owned, update-protected location and treat them like user content. Heaviest; changes the
   protected/updatable boundary.
 
-### Acceptance / how to clear this blocker
+### Resolution (chosen: approach C)
 
-- One approach (or another) is chosen and written into spec Section 5 (and Section 4 where the
-  migration interaction is touched).
-- Spec Section 19 Gate 0 and plan Phase 0 are updated to reference the resolution.
-- Status here is flipped to ✅ RESOLVED with a one-line pointer to the spec section that now covers it.
+**Decision:** Collection-type *schemas* and `template.liquid` files are **theme-only**. Presets may
+seed only `collections/` (item data), never `collection-types/`. This removes the capability that
+created the conflict rather than reconciling it.
+
+Answering the four "What a fix must address" questions:
+
+1. **Source of truth on update.** The **theme** always wins for `collection-types/`. There is no
+   merge and no preset input — a project's schema is whatever its theme version ships.
+2. **Where the preset version comes from at update time.** N/A — presets never define schema, so
+   updates never need to re-resolve a preset. The `presets/` dir stays creation-time-only, exactly as
+   [theme-presets.md:142](theme-presets.md) documents.
+3. **Interaction with Section 4 migration.** Because a preset can never introduce a field the theme
+   lacks, the post-update theme schema always contains every field the user has data for. The
+   `_archived` silent-drop path is therefore never reached for preset-only fields. The only schema
+   change is the theme bumping its own `schemaVersion` — the normal, already-handled migration path.
+   Spec Section 4 now states this explicitly.
+4. **Consistency with the update model.** Collection-type schemas follow the **replace** model (like
+   `widgets/`), cleanly, because nothing other than the theme ever writes to `collection-types/`.
+
+**Cost (documented limitation):** a theme that wants a richer collection for a given preset must
+define that richer schema as the theme's own base schema (or as a distinct collection `type`), not as
+a per-preset overlay. Accepted as the simplest safe option.
+
+**Enforcement:** a preset that ships a `collection-types/` folder is rejected at theme upload;
+`resolvePresetPaths` returns only `collectionsDir`; preset-seeded items of an unknown `type` are
+skipped with a warning (orphaned-data behavior).
+
+### Acceptance / how this blocker was cleared
+
+- ✅ Approach C chosen and written into spec Section 5 ("Preset Seeding" + "Theme Update Allowlist")
+  and Section 4 (migration note).
+- ✅ Spec Section 19 Gate 0 and plan Phase 0 / Phase 9 updated to reference the resolution.
+- ✅ Status flipped to RESOLVED above; spec pointer: Section 5, "Preset Seeding".
+
+---
+
+## BLOCKER-2 — Schema migration silently drops user data in removed optional fields
+
+- **Severity:** High — silent user-data loss on a legitimate (non-preset) flow.
+- **Status:** ✅ RESOLVED (2026-06-01) — **warn before dropping**. Spec Section 4 rewritten.
+- **Discovered:** 2026-06-01 (pre-implementation review).
+- **Affects:** Spec Section 4 (Schema Versioning and Migration).
+
+### Summary
+
+As originally written, Section 4 moved fields no longer in the schema into an **in-memory-only**
+`_archived` map that "is not written to disk" and whose data "is gone if [the user doesn't re-add the
+field], which matches the rest of Widgetizer's 'no hidden state' rule." On the next save of an item,
+the dropped field's value was permanently lost — with no warning unless the field was *required*
+(only required-field gaps set `invalid: true`).
+
+This is a silent-data-loss path of the same **outcome** as BLOCKER-1, reached by a different route:
+a theme **upgrade** that legitimately removes an optional field, or a theme **switch**. It is not
+closed by the BLOCKER-1 (approach C) fix, which only addressed preset divergence.
+
+### Why it happens (mechanism) + the false premise
+
+The spec justified the drop by claiming it "matches the rest of Widgetizer." That premise is
+**false**, verified in code:
+
+- `persistPageWithMediaTracking` ([server/controllers/pageController.js:98-100](../server/controllers/pageController.js#L98)) writes page data **verbatim** (`JSON.stringify(pageData)`) — no schema-based pruning.
+- Widget rendering merges defaults **under** stored settings (`Object.assign(enhancedSettings, settings)`, [renderingService.js:556](../server/services/renderingService.js#L556)); nothing prunes orphaned keys on save.
+
+So pages/widgets **keep** orphaned values on disk indefinitely. Collections would have been the *only*
+content type to silently discard them.
+
+### Resolution (chosen: warn before dropping)
+
+- On read, unknown fields are **separated** into the in-memory `_archived` map (so the form/render only
+  see current-schema fields), but the **on-disk `settings` object retains them** — a read never erases.
+- The write path (`buildCollectionItemData` / `writeCollectionItem`) **merges back** on-disk settings
+  keys that are absent from both the current schema and the incoming payload, so an ordinary save
+  cannot lose data in a dropped field.
+- Discarding orphaned data is **explicit**: the editor shows an "Archived data" notice listing each
+  orphaned field + value preview, behind a confirmed **Discard archived data** action
+  (`useConfirmationAction`). Only that removes the keys.
+- The false "matches Widgetizer's no-hidden-state rule" claim is removed; the new text notes the
+  approach is strictly safer than pages/globals.
+- Spec pointer: Section 4 ("Schema Versioning and Migration").
+
+---
+
+## BLOCKER-3 — `menu.liquid` active-state rewrite silently breaks highlighting on all existing pages
+
+- **Severity:** High — silent UX + accessibility regression across every exported/previewed page.
+- **Status:** ✅ RESOLVED (2026-06-01) — wire the new global into existing render paths. Spec Section 6 amended.
+- **Discovered:** 2026-06-01 (pre-implementation review).
+- **Affects:** Spec Section 6 (Path Resolution Strategy → active-state / menu snippet).
+
+### Summary
+
+Section 6 rewrites the shared `src/core/snippets/menu.liquid` to compute active state by comparing a
+**new** global `currentCanonicalPath` instead of the old `pageSlug | append: '.html'`. But the spec
+only described setting `currentCanonicalPath` in the **Phase-2 collection-item** export loop. The
+snippet is rendered by **every** page, and the existing render paths set only `pageSlug`:
+
+- `server/controllers/previewController.js` (~line 67) — preview.
+- `server/controllers/exportController.js` (~line 286) — the existing page-export loop.
+- `renderSingleWidget` morph path (`previewController.js` ~276-280).
+
+With the snippet changed but these paths unchanged, `currentCanonicalPath` is `undefined` on every
+normal page render, the comparison never matches, and `is-active` + `aria-current="page"` silently
+vanish from all menus. Same "two correct-looking decisions combine into a silent regression" shape as
+BLOCKER-1. The byte-equality page regression test would **not** catch it (it asserts layout output,
+not active-state).
+
+### Resolution
+
+- Section 6 now **explicitly requires** setting `currentCanonicalPath` (and attaching `canonicalPath`
+  to resolved menu items) in `previewController.js`, the existing page-export loop in
+  `exportController.js`, and the `renderSingleWidget` morph path — not just the collection-item loop.
+- For pages: `currentCanonicalPath = ${pageData.slug}.html` (or `index.html` for the homepage).
+- The Phase-2 regression suite must add a **page-level active-state assertion** (a page whose menu
+  links to itself renders `is-active`/`aria-current`), alongside the existing byte-equality test.
+- Spec pointer: Section 6 ("Active-state vs href separation for menu items").
+
+---
+
+## Pre-implementation review findings (2026-06-01)
+
+A pre-implementation review (anchor verification + adversarial design-conflict hunt, grounded in the
+current `collections` branch) produced five findings. Anchor verification was clean — all ~28 cited
+file/line/symbol references matched. The five design findings were all folded into the spec in one
+pass:
+
+| Finding | Severity | Outcome |
+| ------- | -------- | ------- |
+| 1 — menu active-state global not wired into existing page render paths | High | **BLOCKER-3** (above) |
+| 2 — SeoTag change dropped `og:image` for pages without `siteUrl` (broke an existing test + the byte-equality promise) | Med-High | Resolved: **preserve** current behavior — constant `assets/images` base, root-absolute URL when no `siteUrl`. Spec Section 6 "SeoTag changes". |
+| 3 — `resolveWidgetPageLinks` retained the `pagesByUuid.size === 0` short-circuit, so widget custom-URL links aren't depth-prefixed when the page map is empty | Med | Resolved: drop the short-circuit (mirror the menu fix). Spec Section 6 link-resolution call-site list. |
+| 4 — schema migration silently drops removed-optional-field data | High | **BLOCKER-2** (above) |
+| 5 — two-pass export validation ordering contradicted "writes no HTML on failure" | Med-Low | Resolved: validate before any disk write. Spec Section 13 step 2. |
+
+The decisions for Findings 2 and 4 were made by the project owner during the review.
 
 ---
 

@@ -2,10 +2,10 @@
 
 > Companion to [future-collections.md](future-collections.md). That doc is the *specification* (what to build, in detail). This doc is the *execution plan* (what order to build it in, and how to know each phase is done).
 
-> 🚫 **BLOCKED — do not start Phase 1.** This plan cannot begin while
-> [future-collections-blockers.md](future-collections-blockers.md) has any unresolved blocker.
-> `BLOCKER-1` (preset collection-type overrides destroyed by theme updates) is currently
-> **UNRESOLVED**. Phase 0 below is not complete until that document is clear.
+> ✅ **Unblocked.** [future-collections-blockers.md](future-collections-blockers.md) has zero
+> unresolved blockers. `BLOCKER-1` (preset collection-type overrides destroyed by theme updates) was
+> resolved via candidate approach C — collection-type schemas/templates are theme-only; presets seed
+> only `collections/` item data (spec Section 5). This plan re-gates if any new blocker opens.
 
 The work is split into 21 phases. Each phase is small enough to complete and verify in one or two work sessions. **Don't start a phase until every dependency listed is merged and tested.** When you finish a phase, run its acceptance checks before opening the next one.
 
@@ -17,21 +17,32 @@ The spec document has a higher-level "Gate 1 / Gate 2 / ..." view in Section 19;
 
 Nothing to build. Confirm the team is aligned on what's already settled in the spec.
 
-**First: clear all blockers.** Phase 0 is not done until
-[future-collections-blockers.md](future-collections-blockers.md) has **zero** unresolved entries.
-Each resolution must be written back into the spec, not just agreed verbally.
+**Blockers cleared.** [future-collections-blockers.md](future-collections-blockers.md) has **zero**
+unresolved entries, and each resolution is written back into the spec (not merely agreed verbally).
 
-- 🚫 **`BLOCKER-1` UNRESOLVED** — presets can seed/override `collection-types/` at creation, but the
-  theme update replaces that folder wholesale from the theme source, silently reverting the schema
-  and dropping preset-only field data. Must be resolved (and the spec amended) before Phase 1.
+- ✅ **`BLOCKER-1` RESOLVED** — collection-type schemas/templates are theme-only; presets seed only
+  `collections/` item data. The theme-update wholesale replace of `collection-types/` is now
+  consistent with creation, so no preset-only field is reverted and no field data is silently
+  dropped (spec Sections 5 and 4).
+- ✅ **`BLOCKER-2` RESOLVED** — schema migration **warns before dropping**: orphaned optional-field
+  data stays on disk and is only removed via an explicit confirmed "Discard archived data" action, so
+  a theme upgrade/switch can't silently lose user data (spec Section 4). **Affects Phase 1** — the
+  normalization + write path must preserve unknown on-disk settings keys.
+- ✅ **`BLOCKER-3` RESOLVED** — the `menu.liquid` active-state rewrite must set `currentCanonicalPath`
+  in the existing page render paths (`previewController`, the page-export loop), not just the
+  collection-item loop, or active-nav highlighting silently breaks on every page (spec Section 6).
+  **Affects Gate 3 / Phase 16-ish**, not Phase 1.
+- Pre-implementation review (2026-06-01) also folded in three lower-severity Section 6/13 fixes:
+  SeoTag preserves current `og:image` behavior without `siteUrl`; `resolveWidgetPageLinks` drops its
+  empty-map short-circuit; two-pass export validation runs before any disk write.
 - Asset paths use depth-aware relative URLs (`outputPathPrefix`).
 - Items get stable UUIDs in v1.
-- Presets can seed `collection-types/` and `collections/`. **(Gated by `BLOCKER-1` for the
-  `collection-types/` half — `collections/` data seeding is unaffected.)**
+- Presets can seed `collections/` (item data) **only** — never `collection-types/`. A preset that
+  ships a `collection-types/` folder is rejected at theme upload.
 - Forms inside collection item templates: **open question, deferred** (see spec Section 14). Build Phases 1 and 2 with the interim behavior — no forms wiring in templates. Revisit before any phase that would need them.
 - SEO field mapping: `usedAsOgImage` flag, `og_type: "article"`, canonical always explicit when `siteUrl` is set.
 
-If anything here is in dispute, resolve it before Phase 1. Do not begin Phase 1 while any blocker is open.
+If a new blocker is discovered, log it in the blockers doc and stop before Phase 1 until it is resolved.
 
 ---
 
@@ -206,16 +217,16 @@ If anything here is in dispute, resolve it before Phase 1. Do not begin Phase 1 
 
 ## Phase 9 — Theme update, upload, and preset integration
 
-**What you'll have:** The full theme lifecycle now knows about collections. Updates copy `collection-types/`; uploads validate it; presets can ship starter collections.
+**What you'll have:** The full theme lifecycle now knows about collections. Updates copy `collection-types/` from the theme; uploads validate it; presets can ship starter collection *data*.
 
 **Goal:** Make sure collections behave correctly across every theme-lifecycle event a user can trigger — update apply, theme switch, fresh upload, project-from-preset.
 
 **Acceptance:**
 - `themeUpdateService.UPDATABLE_PATHS` includes `"collection-types"`.
-- Applying a theme update replaces `collection-types/` entirely; `collections/` (user data) is never touched.
-- `resolvePresetPaths` in `themeController` returns `collectionTypesDir` and `collectionsDir` when present in a preset.
-- `projectController` creation flow copies preset `collection-types/` (overwriting theme default) and preset `collections/` (regenerating uuids + timestamps per item, reusing the regeneration logic from `remapDuplicatedProjectUuids`).
-- Tests: applying a theme update preserves `collections/` and replaces `collection-types/`; project created from a preset with seeded items shows those items immediately and their uuids are freshly generated; duplication carries both directories with new item uuids; media-usage refresh after each event picks up collection sources.
+- Applying a theme update replaces `collection-types/` entirely from the theme source; `collections/` (user data) is never touched.
+- `resolvePresetPaths` in `themeController` returns `collectionsDir` (item data) when present in a preset, and **never** a `collectionTypesDir`. A preset containing a `collection-types/` folder is rejected at theme upload (per spec Section 5).
+- `projectController` creation flow copies preset `collections/` item data (regenerating uuids + timestamps per item, reusing the regeneration logic from `remapDuplicatedProjectUuids`), skipping items whose `type` the theme doesn't define. Collection-type schemas always come from the theme via `copyThemeToProject` — no preset overwrite step.
+- Tests: applying a theme update preserves `collections/` and replaces `collection-types/` from the theme (a preset-derived project ends up with the **same** schema as a non-preset project — `BLOCKER-1` regression test); theme upload rejects a preset that contains `collection-types/`; project created from a preset with seeded items shows those items immediately and their uuids are freshly generated; preset items of an unknown `type` are skipped with a warning; duplication carries both directories with new item uuids; media-usage refresh after each event picks up collection sources.
 
 **Dependencies:** Phase 6, Phase 7.
 
