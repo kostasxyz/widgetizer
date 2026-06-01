@@ -669,9 +669,11 @@ describe("refreshAllMediaUsage", () => {
     await fs.move(pagesDir, backupDir);
 
     try {
+      // No pages dir is non-fatal: globals/theme/collections are still scanned
+      // (the early-return was removed so collections-only projects still refresh).
       const result = await refreshAllMediaUsage(PROJECT_ID);
       assert.equal(result.success, true);
-      assert.match(result.message, /no pages directory/i);
+      assert.match(result.message, /0 pages/i);
     } finally {
       await fs.move(backupDir, pagesDir);
     }

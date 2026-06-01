@@ -1,6 +1,11 @@
 import fs from "fs-extra";
 import path from "path";
-import { getProjectPagesDir, getProjectThemeJsonPath } from "../config.js";
+import {
+  getProjectPagesDir,
+  getProjectThemeJsonPath,
+  getProjectCollectionsDir,
+} from "../config.js";
+import { isAtomicTmpFile } from "../utils/atomicFs.js";
 import { readMediaFile } from "./mediaService.js";
 import * as mediaRepo from "../db/repositories/mediaRepository.js";
 import { getProjectFolderName } from "../utils/projectHelpers.js";
@@ -280,6 +285,81 @@ export async function syncPageMediaUsageOnDelete(projectId, pageId) {
   return removePageFromMediaUsage(projectId, pageId);
 }
 
+// ============================================================================
+// Collection items (spec Section 8) — source string `collection:{type}/{slug}`
+// ============================================================================
+
+/** Build the media-usage source string for a collection item. */
+function collectionSource(collectionType, itemSlug) {
+  return `collection:${collectionType}/${itemSlug}`;
+}
+
+/**
+ * Extract tracked upload paths from a collection item's settings (recurses into
+ * nested objects/arrays like link settings). Mirrors page/global extraction.
+ * @param {object} itemData - raw collection item ({ settings })
+ * @returns {string[]} unique media paths
+ */
+export function extractMediaPathsFromCollectionItem(itemData) {
+  const mediaPaths = new Set();
+  if (itemData?.settings && typeof itemData.settings === "object") {
+    Object.values(itemData.settings).forEach((value) => collectMediaPaths(value, mediaPaths));
+  }
+  return Array.from(mediaPaths);
+}
+
+/** Full usage refresh for one collection item under `collection:{type}/{slug}`. */
+export async function updateCollectionItemMediaUsage(projectId, collectionType, itemSlug, itemData) {
+  try {
+    const mediaPaths = extractMediaPathsFromCollectionItem(itemData);
+    const mediaData = await readMediaFile(projectId);
+    const matchedFileIds = findFileIdsByPaths(mediaData.files, mediaPaths);
+    mediaRepo.updateMediaUsageForSource(
+      projectId,
+      collectionSource(collectionType, itemSlug),
+      matchedFileIds,
+    );
+    return { success: true, mediaPaths };
+  } catch (error) {
+    console.error(
+      `Error updating collection item media usage (${collectionType}/${itemSlug}):`,
+      error,
+    );
+    throw error;
+  }
+}
+
+/** Remove one collection item's source from media usage entirely. */
+export async function removeCollectionItemFromMediaUsage(projectId, collectionType, itemSlug) {
+  try {
+    mediaRepo.updateMediaUsageForSource(projectId, collectionSource(collectionType, itemSlug), []);
+    return { success: true };
+  } catch (error) {
+    console.error(
+      `Error removing collection item from media usage (${collectionType}/${itemSlug}):`,
+      error,
+    );
+    throw error;
+  }
+}
+
+/**
+ * Keep collection-item media usage in sync after a write. On rename
+ * (previousItemSlug !== itemSlug) the old source is removed first.
+ */
+export async function syncCollectionItemMediaUsageOnWrite(
+  projectId,
+  collectionType,
+  itemSlug,
+  itemData,
+  previousItemSlug = null,
+) {
+  if (previousItemSlug && previousItemSlug !== itemSlug) {
+    await removeCollectionItemFromMediaUsage(projectId, collectionType, previousItemSlug);
+  }
+  return updateCollectionItemMediaUsage(projectId, collectionType, itemSlug, itemData);
+}
+
 /**
  * Get usage information for a specific media file.
  * @param {string} projectId - The project's UUID
@@ -319,11 +399,7 @@ export async function refreshAllMediaUsage(projectId) {
   try {
     const projectFolderName = await getProjectFolderName(projectId);
     const pagesDir = getProjectPagesDir(projectFolderName);
-
-    // Check if pages directory exists
-    if (!(await fs.pathExists(pagesDir))) {
-      return { success: true, message: "No pages directory found" };
-    }
+    const pagesExist = await fs.pathExists(pagesDir);
 
     // Read all media files to build a path → fileId lookup
     const mediaData = await readMediaFile(projectId);
@@ -348,23 +424,27 @@ export async function refreshAllMediaUsage(projectId) {
       }
     }
 
-    // Get all page files
-    const allEntries = await fs.readdir(pagesDir, { withFileTypes: true });
-    const pageFiles = allEntries.filter(
-      (entry) => entry.isFile() && entry.name.endsWith(".json") && entry.name !== "global",
-    );
+    // Process each page (the pages dir may be absent on a freshly-imported or
+    // collections-only project; globals/theme/collections are still scanned).
+    let pageCount = 0;
+    if (pagesExist) {
+      const allEntries = await fs.readdir(pagesDir, { withFileTypes: true });
+      const pageFiles = allEntries.filter(
+        (entry) => entry.isFile() && entry.name.endsWith(".json") && entry.name !== "global",
+      );
+      pageCount = pageFiles.length;
 
-    // Process each page
-    for (const fileEntry of pageFiles) {
-      const pageId = fileEntry.name.replace(".json", "");
-      const pagePath = path.join(pagesDir, fileEntry.name);
+      for (const fileEntry of pageFiles) {
+        const pageId = fileEntry.name.replace(".json", "");
+        const pagePath = path.join(pagesDir, fileEntry.name);
 
-      try {
-        const pageContent = await fs.readFile(pagePath, "utf8");
-        const pageData = JSON.parse(pageContent);
-        addUsageForPaths(extractMediaPathsFromPage(pageData), pageId);
-      } catch (error) {
-        console.warn(`Error processing page ${pageId} for media usage:`, error.message);
+        try {
+          const pageContent = await fs.readFile(pagePath, "utf8");
+          const pageData = JSON.parse(pageContent);
+          addUsageForPaths(extractMediaPathsFromPage(pageData), pageId);
+        } catch (error) {
+          console.warn(`Error processing page ${pageId} for media usage:`, error.message);
+        }
       }
     }
 
@@ -398,6 +478,37 @@ export async function refreshAllMediaUsage(projectId) {
       }
     }
 
+    // Also scan collection items (collections/<type>/<slug>.json).
+    let collectionItemCount = 0;
+    const collectionsDir = getProjectCollectionsDir(projectFolderName);
+    if (await fs.pathExists(collectionsDir)) {
+      const typeEntries = await fs.readdir(collectionsDir, { withFileTypes: true });
+      for (const typeEntry of typeEntries) {
+        if (!typeEntry.isDirectory()) continue;
+        const collectionType = typeEntry.name;
+        const typeDir = path.join(collectionsDir, collectionType);
+        const itemNames = (await fs.readdir(typeDir)).filter(
+          (n) => n.endsWith(".json") && n !== "_order.json" && !isAtomicTmpFile(n),
+        );
+        for (const itemName of itemNames) {
+          const itemSlug = itemName.replace(".json", "");
+          try {
+            const itemData = JSON.parse(await fs.readFile(path.join(typeDir, itemName), "utf8"));
+            addUsageForPaths(
+              extractMediaPathsFromCollectionItem(itemData),
+              collectionSource(collectionType, itemSlug),
+            );
+            collectionItemCount++;
+          } catch (error) {
+            console.warn(
+              `Error processing collection item ${collectionType}/${itemSlug} for media usage:`,
+              error.message,
+            );
+          }
+        }
+      }
+    }
+
     // Convert Sets to arrays and write via replaceMediaUsage (only touches media_usage table)
     const finalUsageMap = new Map();
     for (const [fileId, usageSet] of usageMap) {
@@ -407,7 +518,7 @@ export async function refreshAllMediaUsage(projectId) {
 
     return {
       success: true,
-      message: `Refreshed usage tracking for ${pageFiles.length} pages, global widgets, and theme settings`,
+      message: `Refreshed usage tracking for ${pageCount} pages, ${collectionItemCount} collection items, global widgets, and theme settings`,
     };
   } catch (error) {
     console.error("Error refreshing media usage:", error);

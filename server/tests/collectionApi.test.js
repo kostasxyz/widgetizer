@@ -27,6 +27,8 @@ console.error = () => {};
 const collectionController = await import("../controllers/collectionController.js");
 const { getProjectCollectionSchemaPath, getProjectDir } = await import("../config.js");
 const projectRepo = await import("../db/repositories/projectRepository.js");
+const { readMediaFile } = await import("../services/mediaService.js");
+const { writeMediaFile } = await import("../controllers/mediaController.js");
 const { closeDb } = await import("../db/index.js");
 
 const PROJECT_ID = "collapi-project-uuid";
@@ -77,6 +79,7 @@ function schema() {
     settings: [
       { type: "text", id: "title", label: "Title", required: true, usedAsTitle: true },
       { type: "textarea", id: "description", label: "Description" },
+      { type: "image", id: "featured_image", label: "Image" },
     ],
   };
 }
@@ -321,5 +324,43 @@ describe("update / delete / duplicate / reorder", () => {
       params: { collectionType: "portfolio" },
     });
     assert.deepEqual(list._json.map((i) => i.slug), ["beta", "alpha"]);
+  });
+});
+
+describe("controller wires media usage (Phase 6)", () => {
+  const IMG = "api-img";
+  const usedIn = (m) => m.files.find((f) => f.id === IMG).usedIn;
+
+  beforeEach(async () => {
+    await writeMediaFile(PROJECT_ID, {
+      files: [
+        { id: IMG, filename: "hero.jpg", path: "/uploads/images/hero.jpg", type: "image/jpeg", usedIn: [] },
+      ],
+    });
+  });
+
+  it("records usage on create and clears it on delete", async () => {
+    await call(collectionController.createItem, {
+      params: { collectionType: "portfolio" },
+      body: { slug: "alpha", settings: { title: "Alpha", featured_image: "/uploads/images/hero.jpg" } },
+    });
+    assert.deepEqual(usedIn(await readMediaFile(PROJECT_ID)), ["collection:portfolio/alpha"]);
+
+    await call(collectionController.deleteItem, {
+      params: { collectionType: "portfolio", itemSlug: "alpha" },
+    });
+    assert.deepEqual(usedIn(await readMediaFile(PROJECT_ID)), []);
+  });
+
+  it("moves the usage source when an item is renamed", async () => {
+    await call(collectionController.createItem, {
+      params: { collectionType: "portfolio" },
+      body: { slug: "alpha", settings: { title: "Alpha", featured_image: "/uploads/images/hero.jpg" } },
+    });
+    await call(collectionController.updateItem, {
+      params: { collectionType: "portfolio", itemSlug: "alpha" },
+      body: { slug: "renamed", settings: { title: "Alpha", featured_image: "/uploads/images/hero.jpg" } },
+    });
+    assert.deepEqual(usedIn(await readMediaFile(PROJECT_ID)), ["collection:portfolio/renamed"]);
   });
 });

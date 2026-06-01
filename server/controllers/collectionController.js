@@ -8,6 +8,11 @@
  */
 
 import * as collectionService from "../services/collectionService.js";
+import {
+  syncCollectionItemMediaUsageOnWrite,
+  updateCollectionItemMediaUsage,
+  removeCollectionItemFromMediaUsage,
+} from "../services/mediaUsageService.js";
 
 /** Map a service error to an HTTP response, or 500 for the unexpected. */
 function respondError(res, err) {
@@ -106,6 +111,7 @@ export async function createItem(req, res) {
 
     const { item } = collectionService.buildCollectionItemData(schema, req.body, null);
     await collectionService.writeCollectionItem(req.activeProject.id, folder, collectionType, item, null);
+    await syncCollectionItemMediaUsageOnWrite(req.activeProject.id, collectionType, item.slug, item, null);
     noStore(res).status(201).json(collectionService.normalizeCollectionItem(item, schema));
   } catch (err) {
     respondError(res, err);
@@ -130,6 +136,13 @@ export async function updateItem(req, res) {
       item,
       previousSlug,
     );
+    await syncCollectionItemMediaUsageOnWrite(
+      req.activeProject.id,
+      collectionType,
+      item.slug,
+      item,
+      previousSlug,
+    );
     noStore(res).json(collectionService.normalizeCollectionItem(item, schema));
   } catch (err) {
     respondError(res, err);
@@ -147,6 +160,7 @@ export async function deleteItem(req, res) {
       itemSlug,
     );
     if (!result.deleted) return noStore(res).status(404).json({ error: "Item not found" });
+    await removeCollectionItemFromMediaUsage(req.activeProject.id, collectionType, itemSlug);
     noStore(res).json({ success: true, slug: itemSlug });
   } catch (err) {
     respondError(res, err);
@@ -163,6 +177,9 @@ export async function bulkDeleteItems(req, res) {
       collectionType,
       req.body.itemSlugs,
     );
+    for (const slug of result.deleted) {
+      await removeCollectionItemFromMediaUsage(req.activeProject.id, collectionType, slug);
+    }
     const partial = result.notFound.length > 0 || result.errors.length > 0;
     noStore(res)
       .status(partial ? 207 : 200)
@@ -186,6 +203,7 @@ export async function duplicateItem(req, res) {
       itemSlug,
     );
     if (!dup) return res.status(404).json({ error: "Item not found" });
+    await updateCollectionItemMediaUsage(req.activeProject.id, collectionType, dup.slug, dup);
     noStore(res).status(201).json(collectionService.normalizeCollectionItem(dup, schema));
   } catch (err) {
     respondError(res, err);
