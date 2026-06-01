@@ -12,6 +12,7 @@ import * as projectRepo from "../db/repositories/projectRepository.js";
 import { formatHtml, formatXml, validateHtml, generateIssuesReport } from "../utils/htmlProcessor.js";
 import { preprocessThemeSettings } from "../utils/themeHelpers.js";
 import { generateExportSiteIcons } from "../utils/siteIconHelpers.js";
+import { rewriteStoragePaths, markdownAlternateHref } from "../utils/exportPostProcess.js";
 import { buildFormsManifest } from "../services/formsManifestService.js";
 import TurndownService from "turndown";
 import * as exportRepo from "../db/repositories/exportRepository.js";
@@ -358,12 +359,9 @@ export async function exportProjectToDir(projectId, options = {}) {
         console.warn(`Could not format HTML for ${pageData.id}.html: ${formatResult.error}. Writing unformatted HTML.`);
       }
 
-      // Rewrite any remaining /uploads/ storage paths to their published asset locations.
-      // Dedicated tags ({% image %}) already use the publish-mode base path, but generic
-      // link fields store the raw storage path which needs rewriting here.
-      processedHtml = processedHtml
-        .replaceAll("/uploads/images/", "assets/images/")
-        .replaceAll("/uploads/files/", "assets/files/");
+      // Rewrite any remaining /uploads/ storage paths to their published asset
+      // locations. Pages live at the export root, so the prefix is "".
+      processedHtml = rewriteStoragePaths(processedHtml, "");
 
       // Validate HTML (only when developer mode is enabled)
       if (devModeEnabled) {
@@ -395,12 +393,7 @@ Per aspera ad astra
       // Inject markdown alternate link into <head> when markdown export is enabled
       if (exportMarkdown) {
         const mdFilename = pageData.id === "index" || pageData.id === "home" ? "index.md" : `${pageData.id}.md`;
-        let mdHref = mdFilename;
-        if (validSiteUrl) {
-          try {
-            mdHref = new URL(mdFilename, siteUrl).href;
-          } catch { /* fall back to relative */ }
-        }
+        const mdHref = markdownAlternateHref(mdFilename, siteUrl, validSiteUrl, "");
         processedHtml = processedHtml.replace("</head>", `  <link rel="alternate" type="text/markdown" href="${mdHref}">\n</head>`);
       }
 
