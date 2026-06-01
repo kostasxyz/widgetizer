@@ -72,6 +72,8 @@ const PORTFOLIO_SCHEMA = {
     { type: "link", id: "external_url", label: "Link" },
     { type: "link", id: "dead_link", label: "Dead link" },
     { type: "text", id: "seo_title", label: "SEO title" },
+    { type: "textarea", id: "seo_description", label: "SEO description" },
+    { type: "checkbox", id: "seo_noindex", label: "Hide from search engines", default: false },
   ],
 };
 
@@ -158,6 +160,15 @@ const BETA = {
   updated: "2025-02-04T00:00:00.000Z",
   settings: { title: "Project Beta", featured_image: "", external_url: { href: "https://ext.com" }, dead_link: { href: "" } },
 };
+// Valid but noindex — excluded from sitemap, disallowed in robots.
+const GAMMA = {
+  id: "project-gamma",
+  slug: "project-gamma",
+  uuid: "uuid-gamma",
+  created: "2025-01-05T00:00:00.000Z",
+  updated: "2025-02-06T00:00:00.000Z",
+  settings: { title: "Project Gamma", seo_noindex: true, featured_image: "", external_url: { href: "" }, dead_link: { href: "" } },
+};
 
 after(async () => {
   closeDb();
@@ -172,7 +183,7 @@ after(async () => {
 describe("item-page export — happy path", () => {
   let outputDir;
   before(async () => {
-    await seedProject("citem-uuid", "citem", { items: [ALPHA, BETA] });
+    await seedProject("citem-uuid", "citem", { items: [ALPHA, BETA, GAMMA] });
     const result = await exportProjectToDir("citem-uuid");
     outputDir = result.outputDir;
   });
@@ -221,6 +232,30 @@ describe("item-page export — happy path", () => {
     const html = await fs.readFile(path.join(outputDir, "portfolio", "project-alpha.html"), "utf8");
     assert.match(html, /Made with Widgetizer/);
     assert.match(html, /<!doctype html>/i); // prettier lowercases the doctype
+  });
+
+  // --- Phase 20: SEO outputs ---
+
+  it("sitemap.xml lists indexable item URLs and excludes noindex items", async () => {
+    const sitemap = await fs.readFile(path.join(outputDir, "sitemap.xml"), "utf8");
+    assert.match(sitemap, /<loc>https:\/\/items\.example\.com\/portfolio\/project-alpha\.html<\/loc>/);
+    assert.match(sitemap, /<loc>https:\/\/items\.example\.com\/portfolio\/project-beta\.html<\/loc>/);
+    assert.doesNotMatch(sitemap, /project-gamma\.html/, "noindex item must be excluded from sitemap");
+    // Pages precede collection items (deterministic order).
+    assert.ok(sitemap.indexOf("/portfolio/") > sitemap.indexOf("<loc>https://items.example.com/</loc>"));
+  });
+
+  it("robots.txt disallows the noindex item", async () => {
+    const robots = await fs.readFile(path.join(outputDir, "robots.txt"), "utf8");
+    assert.match(robots, /Disallow: \/portfolio\/project-gamma\.html/);
+    assert.doesNotMatch(robots, /Disallow: \/portfolio\/project-alpha\.html/);
+  });
+
+  it("manifest.json summarizes collections with item counts", async () => {
+    const manifest = await fs.readJson(path.join(outputDir, "manifest.json"));
+    assert.ok(Array.isArray(manifest.collections));
+    const portfolio = manifest.collections.find((c) => c.type === "portfolio");
+    assert.deepEqual(portfolio, { type: "portfolio", itemPages: true, itemCount: 3 });
   });
 });
 

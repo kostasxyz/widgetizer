@@ -197,8 +197,18 @@ export async function exportProjectToDir(projectId, options = {}) {
     // per-item-per-field error list. No HTML is written when this trips.
     const collectionSchemas = await listCollectionSchemas(projectFolderName);
     const invalidCollectionItems = [];
+    // Per-collection summary for manifest.json (every collection, incl. those
+    // without item pages) and the valid items of hasItemPages collections for
+    // sitemap/robots (grouped by type, in schema listing order — deterministic).
+    const manifestCollections = [];
+    const itemPagesForSeo = [];
     for (const schema of collectionSchemas) {
       const items = await listCollectionItems(projectFolderName, schema.type);
+      manifestCollections.push({
+        type: schema.type,
+        itemPages: !!schema.hasItemPages,
+        itemCount: items.length,
+      });
       for (const item of items) {
         if (item.invalid) {
           invalidCollectionItems.push({
@@ -207,6 +217,12 @@ export async function exportProjectToDir(projectId, options = {}) {
             errors: item.validationErrors,
           });
         }
+      }
+      if (schema.hasItemPages) {
+        itemPagesForSeo.push({
+          slugPrefix: schema.slugPrefix,
+          items: items.filter((item) => !item.invalid),
+        });
       }
     }
     if (invalidCollectionItems.length > 0) {
@@ -241,8 +257,24 @@ export async function exportProjectToDir(projectId, options = {}) {
   </url>`;
           });
 
+        // Collection item URLs follow the page URLs, grouped by type in listing
+        // order. Excludes noindex items.
+        const collectionSitemapUrls = [];
+        for (const { slugPrefix, items } of itemPagesForSeo) {
+          for (const item of items) {
+            if (item.settings?.seo_noindex) continue;
+            const loc = new URL(`${slugPrefix}/${item.slug}.html`, siteUrl).href;
+            const lastMod = item.updated || new Date().toISOString();
+            collectionSitemapUrls.push(`
+  <url>
+    <loc>${loc}</loc>
+    <lastmod>${lastMod.split("T")[0]}</lastmod>
+  </url>`);
+          }
+        }
+
         const sitemapContent = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${sitemapUrls.join("")}
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${sitemapUrls.join("")}${collectionSitemapUrls.join("")}
 </urlset>`;
 
         const sitemapResult = await formatXml(sitemapContent);
@@ -250,19 +282,22 @@ export async function exportProjectToDir(projectId, options = {}) {
 
         // 2. Generate robots.txt
         const sitemapUrl = new URL("sitemap.xml", siteUrl).href;
-        const disallowPaths = Array.from(
-          new Set(
-            pagesDataArray
-              .filter((page) => page.seo?.robots?.includes("noindex"))
-              .map((page) => {
-                const pageId = page.id || page.slug;
-                if (!pageId) return null;
-                const filename = pageId === "index" || pageId === "home" ? "index.html" : `${pageId}.html`;
-                return `/${filename}`;
-              })
-              .filter(Boolean),
-          ),
-        );
+        // Disallow noindex pages AND noindex collection items, deduplicated
+        // across a single Set so a page and item never emit duplicate lines.
+        const disallowSet = new Set();
+        for (const page of pagesDataArray) {
+          if (!page.seo?.robots?.includes("noindex")) continue;
+          const pageId = page.id || page.slug;
+          if (!pageId) continue;
+          const filename = pageId === "index" || pageId === "home" ? "index.html" : `${pageId}.html`;
+          disallowSet.add(`/${filename}`);
+        }
+        for (const { slugPrefix, items } of itemPagesForSeo) {
+          for (const item of items) {
+            if (item.settings?.seo_noindex) disallowSet.add(`/${slugPrefix}/${item.slug}.html`);
+          }
+        }
+        const disallowPaths = Array.from(disallowSet);
         const robotsLines = [
           "User-agent: *",
           "Allow: /",
@@ -802,6 +837,9 @@ Per aspera ad astra
       exportVersion: version,
       exportedAt: new Date().toISOString(),
       projectName: projectData.name,
+      // Per-collection summary (every collection, including those without item
+      // pages) so consumers can see what content types the site ships.
+      collections: manifestCollections,
     };
     await fs.writeFile(path.join(outputDir, "manifest.json"), JSON.stringify(manifest, null, 2));
 
