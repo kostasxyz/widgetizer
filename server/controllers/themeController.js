@@ -526,7 +526,7 @@ export async function buildLatestSnapshot(themeId) {
  * If no presetId or preset directory doesn't exist, falls back to root.
  * @param {string} themeId - Theme identifier
  * @param {string|null} presetId - Preset identifier (null = use root defaults)
- * @returns {Promise<{templatesDir: string, menusDir: string|null, settingsOverrides: object|null, collectionsDir: string|null}>}
+ * @returns {Promise<{templatesDir: string, menusDir: string|null, settingsOverrides: object|null, collectionsDir: string|null, mediaDir: string|null}>}
  */
 export async function resolvePresetPaths(themeId, presetId) {
   // Use the theme source directory (latest/ if it exists, root otherwise)
@@ -599,7 +599,18 @@ export async function resolvePresetPaths(themeId, presetId) {
     // No preset collections to seed
   }
 
-  return { templatesDir, menusDir, settingsOverrides, collectionsDir };
+  // Resolve preset media/ (starter image binaries + manifest). Seeded into the
+  // project's uploads/images and registered in the media DB at creation time.
+  let mediaDir = null;
+  const presetMediaDir = path.join(presetDir, "media");
+  try {
+    await fs.access(presetMediaDir);
+    mediaDir = presetMediaDir;
+  } catch {
+    // No preset media to seed
+  }
+
+  return { templatesDir, menusDir, settingsOverrides, collectionsDir, mediaDir };
 }
 
 /**

@@ -39,6 +39,8 @@ themes/my-theme/
       menus/              # Preset navigation
         main-menu.json
         footer-menu.json
+      collections/        # Optional: seeded collection ITEM data (see core-collections.md)
+      media/              # Optional: starter images (binaries + manifest.json)
     agency/
       preset.json         # Settings overrides
       screenshot.png
@@ -90,6 +92,49 @@ For any preset:
 - **Menus**: `presets/{id}/menus/` → root `menus/`
 - **Settings**: `presets/{id}/preset.json` overrides → `theme.json` defaults
 - **Screenshot**: `presets/{id}/screenshot.png` → root `screenshot.png`
+
+### Preset media (starter images)
+
+A preset may ship starter images so new projects begin with real photography instead of placeholders. They live under the preset's `media/` folder:
+
+```
+presets/{id}/
+  media/
+    images/         # binaries: each original + its pre-generated
+                    # -large / -medium / -small / -thumb variants
+                    # (same naming the media pipeline produces on upload)
+    manifest.json   # metadata for the media DB records
+```
+
+`manifest.json` shape:
+
+```json
+{
+  "files": [
+    {
+      "filename": "aegean-01.jpg",
+      "originalName": "aegean-01.jpg",
+      "type": "image/jpeg",
+      "size": 292379,
+      "path": "/uploads/images/aegean-01.jpg",
+      "width": 1776, "height": 1178,
+      "alt": "", "title": "",
+      "sizes": {
+        "large":  { "path": "/uploads/images/aegean-01-large.jpg",  "width": 1776, "height": 1178 },
+        "medium": { "path": "/uploads/images/aegean-01-medium.jpg", "width": 1024, "height": 679 },
+        "small":  { "path": "/uploads/images/aegean-01-small.jpg",  "width": 480,  "height": 318 },
+        "thumb":  { "path": "/uploads/images/aegean-01-thumb.jpg",  "width": 150,  "height": 99 }
+      }
+    }
+  ]
+}
+```
+
+At project creation `seedPresetMedia` (in `projectController.js`):
+- copies `media/images/*` verbatim into the project's `uploads/images/` — the `/uploads/images/...` paths are identical across projects, so the image-field values shipped in preset templates and collection items resolve as-is;
+- registers each manifest entry in the media DB (`media_files` + `media_sizes`) with a **fresh, project-scoped UUID** (avoids primary-key collisions across projects) so the media library lists them and usage tracking / export pick them up.
+
+Themes/presets without a `media/` folder are unaffected (the step is skipped). Resolved via `mediaDir` from `resolvePresetPaths`. The image **field values** that reference these files are authored normally inside the preset's `templates/*.json` and `collections/<type>/*.json` (e.g. `"featured_image": "/uploads/images/aegean-18.jpg"`). See also [core-media.md](core-media.md).
 
 ## Files to modify
 

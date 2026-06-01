@@ -12,6 +12,7 @@ import {
   getProjectCollectionDir,
   getProjectCollectionItemPath,
   getProjectCollectionOrderPath,
+  getProjectImagesDir,
 } from "../config.js";
 import { randomUUID } from "crypto";
 import { ZIP_MIME_TYPES } from "../utils/mimeTypes.js";
@@ -78,6 +79,53 @@ export async function seedPresetCollections(folderName, presetCollectionsDir) {
     if (await fs.pathExists(orderSrc)) {
       await fs.copy(orderSrc, getProjectCollectionOrderPath(folderName, type));
     }
+  }
+}
+
+/**
+ * Seed preset media into a freshly created project. A preset may ship starter
+ * images under `presets/<id>/media/`:
+ *
+ *   media/
+ *     images/        # binaries: originals + pre-generated -large/-medium/-small/-thumb variants
+ *     manifest.json  # { files: [{ filename, type, size, path, width, height, alt, title, sizes }] }
+ *
+ * The binaries are copied into the project's uploads/images/ verbatim (their
+ * /uploads/images/... paths are identical across projects, so the image field
+ * values shipped in preset templates/collections resolve as-is). Each manifest
+ * entry is registered in the media DB with a fresh, project-scoped UUID so the
+ * library lists them and usage tracking can pick them up.
+ *
+ * @param {string} folderName - project folder name (filesystem)
+ * @param {string} projectId  - project UUID (DB key for media_files.project_id)
+ * @param {string} presetMediaDir - absolute path to the preset's media/ dir
+ */
+export async function seedPresetMedia(folderName, projectId, presetMediaDir) {
+  const srcImagesDir = path.join(presetMediaDir, "images");
+  if (await fs.pathExists(srcImagesDir)) {
+    await fs.copy(srcImagesDir, getProjectImagesDir(folderName));
+  }
+
+  const manifestPath = path.join(presetMediaDir, "manifest.json");
+  if (!(await fs.pathExists(manifestPath))) return;
+
+  const manifest = await fs.readJSON(manifestPath);
+  const now = new Date().toISOString();
+  for (const entry of manifest.files || []) {
+    if (!entry.filename) continue;
+    mediaRepo.addMediaFile(projectId, {
+      id: randomUUID(),
+      filename: entry.filename,
+      originalName: entry.originalName || entry.filename,
+      type: entry.type || "",
+      size: entry.size || 0,
+      uploaded: now,
+      path: entry.path || `/uploads/images/${entry.filename}`,
+      width: entry.width || null,
+      height: entry.height || null,
+      metadata: { alt: entry.alt || "", title: entry.title || "" },
+      sizes: entry.sizes || {},
+    });
   }
 }
 
@@ -252,6 +300,7 @@ export async function createProject(req, res) {
       menusDir: presetMenusDir,
       settingsOverrides,
       collectionsDir: presetCollectionsDir,
+      mediaDir: presetMediaDir,
     } = await themeController.resolvePresetPaths(theme, preset);
 
     // If preset has custom menus, replace root menus with preset menus
@@ -347,6 +396,17 @@ export async function createProject(req, res) {
     const wasFirstProject = !currentActiveId;
 
     projectRepo.createProject(newProject);
+
+    // Seed preset starter media (binaries + DB records) now that the project
+    // row exists for the media_files foreign key.
+    if (presetMediaDir) {
+      try {
+        await seedPresetMedia(folderName, newProject.id, presetMediaDir);
+      } catch (error) {
+        console.warn(`[ProjectController] Failed to seed preset media: ${error.message}`);
+      }
+    }
+
     await refreshMediaUsageAfterStructuralChange(newProject.id, "project creation");
     if (!currentActiveId) {
       projectRepo.setActiveProjectId(newProject.id);
