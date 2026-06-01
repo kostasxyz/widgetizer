@@ -19,6 +19,7 @@ import useMediaSelection from "../hooks/useMediaSelection";
 import useMediaMetadata from "../hooks/useMediaMetadata";
 import useAppSettings from "../hooks/useAppSettings";
 import { getAllPages } from "../queries/pageManager";
+import { getCollectionSchemas, getCollectionItems } from "../queries/collectionManager";
 import { showRejectedFiles } from "../utils/uploadFeedback";
 import { MEDIA_ACCEPT, mapDropzoneRejections } from "../utils/uploadValidation";
 
@@ -114,7 +115,7 @@ export default function Media() {
       }
 
       try {
-        const pages = await getAllPages();
+        const [pages, schemas] = await Promise.all([getAllPages(), getCollectionSchemas().catch(() => [])]);
         const nextMap = {
           "global:header": "Header (Global)",
           "global:footer": "Footer (Global)",
@@ -126,6 +127,18 @@ export default function Media() {
           if (page.id) nextMap[page.id] = pageTitle;
           if (page.slug) nextMap[page.slug] = pageTitle;
         }
+
+        // Collection items: map "collection:{type}/{slug}" → "{displayName}: {item title}".
+        const schemaList = Array.isArray(schemas) ? schemas : [];
+        const itemsPerType = await Promise.all(
+          schemaList.map((schema) => getCollectionItems(schema.type).catch(() => [])),
+        );
+        schemaList.forEach((schema, index) => {
+          const items = Array.isArray(itemsPerType[index]) ? itemsPerType[index] : [];
+          for (const item of items) {
+            nextMap[`collection:${schema.type}/${item.slug}`] = `${schema.displayName}: ${item.title || item.slug}`;
+          }
+        });
 
         setUsageTitleMap(nextMap);
       } catch {

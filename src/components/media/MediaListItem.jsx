@@ -3,6 +3,7 @@ import { IconButton } from "../ui/Button";
 import { Search, Trash2, Check, Edit2, MoreVertical, FileText, Copy } from "lucide-react";
 import { API_URL } from "../../config";
 import useFormatDate from "../../hooks/useFormatDate";
+import { resolveUsageTitle } from "../../utils/mediaUsageDisplay";
 
 export default function MediaListItem({
   file,
@@ -34,26 +35,7 @@ export default function MediaListItem({
   const isInUse = usageEntries.length > 0;
   const menuButtonClass = "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors";
 
-  const resolveUsageTitle = (usageEntry) => {
-    if (!usageEntry) return null;
-
-    if (typeof usageEntry === "object") {
-      return usageEntry.title || usageEntry.name || usageEntry.id || null;
-    }
-
-    if (usageTitleMap[usageEntry]) {
-      return usageTitleMap[usageEntry];
-    }
-
-    if (usageEntry.startsWith("global:")) {
-      const globalKey = usageEntry.replace("global:", "");
-      return `${globalKey.charAt(0).toUpperCase() + globalKey.slice(1)} (Global)`;
-    }
-
-    return usageEntry;
-  };
-
-  const usageTitles = usageEntries.map(resolveUsageTitle).filter(Boolean);
+  const usageTitles = usageEntries.map((entry) => resolveUsageTitle(entry, usageTitleMap)).filter(Boolean);
 
   return (
     <>
