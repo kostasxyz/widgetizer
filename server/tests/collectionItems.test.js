@@ -1,0 +1,505 @@
+/**
+ * Collections — read/write item storage service (spec Sections 2, 4, 15).
+ *
+ * Phase 3 (read): normalizeCollectionItem, listCollectionItems, readCollectionItem,
+ *   loadCollectionTemplate.
+ * Phase 4 (write): buildCollectionItemData, writeCollectionItem, deleteCollectionItem,
+ *   bulkDeleteCollectionItems, duplicateCollectionItem.
+ *
+ * Run with: node --test server/tests/collectionItems.test.js
+ */
+
+import { describe, it, beforeEach, after } from "node:test";
+import assert from "node:assert/strict";
+import fs from "fs-extra";
+import path from "path";
+import os from "os";
+
+const TEST_ROOT = path.join(os.tmpdir(), `widgetizer-collitems-test-${Date.now()}`);
+process.env.DATA_ROOT = path.join(TEST_ROOT, "data");
+process.env.NODE_ENV = "test";
+
+const _origWarn = console.warn;
+console.warn = () => {};
+
+const {
+  normalizeCollectionItem,
+  listCollectionItems,
+  readCollectionItem,
+  loadCollectionTemplate,
+  buildCollectionItemData,
+  writeCollectionItem,
+  deleteCollectionItem,
+  bulkDeleteCollectionItems,
+  duplicateCollectionItem,
+} = await import("../services/collectionService.js");
+const {
+  getProjectCollectionSchemaPath,
+  getProjectCollectionItemPath,
+  getProjectCollectionOrderPath,
+  getProjectCollectionTemplatePath,
+  getProjectCollectionDir,
+} = await import("../config.js");
+
+after(async () => {
+  await fs.remove(TEST_ROOT);
+  console.warn = _origWarn;
+});
+
+// ----------------------------------------------------------------------------
+// Fixtures
+// ----------------------------------------------------------------------------
+
+function portfolioSchema(over = {}) {
+  return {
+    type: "portfolio",
+    schemaVersion: 2,
+    displayName: "Portfolio",
+    displayNamePlural: "Portfolio",
+    icon: "Briefcase",
+    hasItemPages: true,
+    slugPrefix: "portfolio",
+    defaultSort: "manual",
+    settings: [
+      { type: "text", id: "title", label: "Title", required: true, usedAsTitle: true },
+      { type: "textarea", id: "description", label: "Description" },
+      { type: "image", id: "featured_image", label: "Image" },
+      { type: "checkbox", id: "seo_noindex", label: "Noindex", default: false },
+    ],
+    ...over,
+  };
+}
+
+function itemFile(slug, over = {}) {
+  return {
+    id: slug,
+    uuid: `uuid-${slug}`,
+    slug,
+    schemaVersion: 2,
+    created: "2026-01-01T00:00:00.000Z",
+    updated: "2026-01-01T00:00:00.000Z",
+    settings: { title: slug, description: "", seo_noindex: false },
+    ...over,
+  };
+}
+
+/** Set up a collection on disk: schema + items + optional _order.json. */
+async function setupCollection(folder, type, schema, items = [], order = null) {
+  await fs.outputJSON(getProjectCollectionSchemaPath(folder, type), schema);
+  for (const item of items) {
+    await fs.outputJSON(getProjectCollectionItemPath(folder, type, item.slug), item);
+  }
+  if (order) {
+    await fs.outputJSON(getProjectCollectionOrderPath(folder, type), { order });
+  }
+}
+
+// ============================================================================
+// normalizeCollectionItem (pure)
+// ============================================================================
+
+describe("normalizeCollectionItem", () => {
+  it("fills missing optional fields with schema/empty defaults and computes title", () => {
+    const schema = portfolioSchema();
+    const raw = itemFile("alpha", { settings: { title: "Alpha Project" } });
+    const n = normalizeCollectionItem(raw, schema);
+    assert.equal(n.title, "Alpha Project");
+    assert.equal(n.settings.description, ""); // filled
+    assert.equal(n.settings.seo_noindex, false); // schema default
+    assert.equal(n.invalid, false);
+    assert.deepEqual(n.validationErrors, []);
+  });
+
+  it("flags invalid when a required field is empty", () => {
+    const schema = portfolioSchema();
+    const raw = itemFile("beta", { settings: { title: "" } });
+    const n = normalizeCollectionItem(raw, schema);
+    assert.equal(n.invalid, true);
+    assert.ok(n.validationErrors.some((e) => e.fieldId === "title"));
+  });
+
+  it("moves fields no longer in the schema into _archived without erasing the input", () => {
+    const schema = portfolioSchema();
+    const raw = itemFile("gamma", {
+      settings: { title: "Gamma", subtitle: "kept-around", description: "d" },
+    });
+    const n = normalizeCollectionItem(raw, schema);
+    assert.equal(n.settings.subtitle, undefined); // not in current-schema settings
+    assert.equal(n._archived.subtitle, "kept-around"); // preserved in-memory
+    // input object must not be mutated (on-disk data untouched)
+    assert.equal(raw.settings.subtitle, "kept-around");
+  });
+
+  it("bumps schemaVersion in-memory to the schema's version", () => {
+    const schema = portfolioSchema({ schemaVersion: 5 });
+    const raw = itemFile("delta", { schemaVersion: 2 });
+    const n = normalizeCollectionItem(raw, schema);
+    assert.equal(n.schemaVersion, 5);
+  });
+});
+
+// ============================================================================
+// listCollectionItems
+// ============================================================================
+
+describe("listCollectionItems", () => {
+  beforeEach(async () => {
+    await fs.remove(path.join(TEST_ROOT, "data"));
+  });
+
+  it("returns [] when the collection has no items", async () => {
+    await setupCollection("p", "portfolio", portfolioSchema());
+    assert.deepEqual(await listCollectionItems("p", "portfolio"), []);
+  });
+
+  it("excludes _order.json and *.tmp files", async () => {
+    const schema = portfolioSchema({ defaultSort: "created_asc" });
+    await setupCollection("p", "portfolio", schema, [itemFile("a"), itemFile("b")], ["a", "b"]);
+    // a stray atomic tmp orphan must be ignored
+    await fs.outputJSON(
+      getProjectCollectionItemPath("p", "portfolio", "a.json.3f2504e0-4f89-41d3-9a0c-0305e82c3301") +
+        ".tmp",
+      { junk: true },
+    );
+    const items = await listCollectionItems("p", "portfolio");
+    assert.deepEqual(
+      items.map((i) => i.slug).sort(),
+      ["a", "b"],
+    );
+  });
+
+  it("sorts by created_desc and created_asc", async () => {
+    const items = [
+      itemFile("old", { created: "2026-01-01T00:00:00.000Z" }),
+      itemFile("new", { created: "2026-03-01T00:00:00.000Z" }),
+    ];
+    await setupCollection("p", "portfolio", portfolioSchema({ defaultSort: "created_desc" }), items);
+    let result = await listCollectionItems("p", "portfolio");
+    assert.deepEqual(result.map((i) => i.slug), ["new", "old"]);
+
+    result = await listCollectionItems("p", "portfolio", { sort: "created_asc" });
+    assert.deepEqual(result.map((i) => i.slug), ["old", "new"]);
+  });
+
+  it("sorts by title_asc and title_desc", async () => {
+    const items = [
+      itemFile("z", { settings: { title: "Zebra" } }),
+      itemFile("a", { settings: { title: "Apple" } }),
+    ];
+    await setupCollection("p", "portfolio", portfolioSchema({ defaultSort: "title_asc" }), items);
+    let result = await listCollectionItems("p", "portfolio");
+    assert.deepEqual(result.map((i) => i.title), ["Apple", "Zebra"]);
+
+    result = await listCollectionItems("p", "portfolio", { sort: "title_desc" });
+    assert.deepEqual(result.map((i) => i.title), ["Zebra", "Apple"]);
+  });
+
+  it("honors manual order: ordered first, then unordered by created_desc, stale ignored", async () => {
+    const items = [
+      itemFile("first", { created: "2026-01-01T00:00:00.000Z" }),
+      itemFile("second", { created: "2026-01-02T00:00:00.000Z" }),
+      itemFile("unordered-old", { created: "2026-01-03T00:00:00.000Z" }),
+      itemFile("unordered-new", { created: "2026-01-04T00:00:00.000Z" }),
+    ];
+    // _order lists second, first, and a stale slug that no longer exists
+    await setupCollection("p", "portfolio", portfolioSchema({ defaultSort: "manual" }), items, [
+      "second",
+      "first",
+      "ghost",
+    ]);
+    const result = await listCollectionItems("p", "portfolio");
+    assert.deepEqual(result.map((i) => i.slug), [
+      "second",
+      "first",
+      "unordered-new",
+      "unordered-old",
+    ]);
+  });
+
+  it("applies limit and offset after sorting", async () => {
+    const items = ["a", "b", "c", "d"].map((s, i) =>
+      itemFile(s, { created: `2026-01-0${i + 1}T00:00:00.000Z` }),
+    );
+    await setupCollection("p", "portfolio", portfolioSchema({ defaultSort: "created_asc" }), items);
+    const result = await listCollectionItems("p", "portfolio", { limit: 2, offset: 1 });
+    assert.deepEqual(result.map((i) => i.slug), ["b", "c"]);
+  });
+
+  it("recovers from a duplicate-uuid rename crash: newer updated wins, loser excluded (not deleted)", async () => {
+    const oldFile = itemFile("oldslug", {
+      uuid: "shared-uuid",
+      updated: "2026-01-01T00:00:00.000Z",
+    });
+    const newFile = itemFile("newslug", {
+      uuid: "shared-uuid",
+      updated: "2026-02-01T00:00:00.000Z",
+    });
+    await setupCollection("p", "portfolio", portfolioSchema({ defaultSort: "created_asc" }), [
+      oldFile,
+      newFile,
+    ]);
+    const result = await listCollectionItems("p", "portfolio");
+    assert.deepEqual(result.map((i) => i.slug), ["newslug"]);
+    // loser still on disk (read must not delete)
+    assert.equal(
+      await fs.pathExists(getProjectCollectionItemPath("p", "portfolio", "oldslug")),
+      true,
+    );
+  });
+});
+
+// ============================================================================
+// readCollectionItem + loadCollectionTemplate
+// ============================================================================
+
+describe("readCollectionItem", () => {
+  beforeEach(async () => {
+    await fs.remove(path.join(TEST_ROOT, "data"));
+  });
+
+  it("reads and normalizes a single item", async () => {
+    await setupCollection("p", "portfolio", portfolioSchema(), [
+      itemFile("alpha", { settings: { title: "Alpha" } }),
+    ]);
+    const item = await readCollectionItem("p", "portfolio", "alpha");
+    assert.equal(item.slug, "alpha");
+    assert.equal(item.title, "Alpha");
+    assert.equal(item.settings.description, "");
+  });
+
+  it("returns null for a missing item", async () => {
+    await setupCollection("p", "portfolio", portfolioSchema());
+    assert.equal(await readCollectionItem("p", "portfolio", "nope"), null);
+  });
+});
+
+describe("loadCollectionTemplate", () => {
+  beforeEach(async () => {
+    await fs.remove(path.join(TEST_ROOT, "data"));
+  });
+
+  it("returns the template string when present", async () => {
+    await setupCollection("p", "portfolio", portfolioSchema());
+    await fs.outputFile(
+      getProjectCollectionTemplatePath("p", "portfolio"),
+      "<article>{{ item.settings.title }}</article>",
+    );
+    const tpl = await loadCollectionTemplate("p", "portfolio");
+    assert.match(tpl, /article/);
+  });
+
+  it("returns null when the template file is missing", async () => {
+    await setupCollection("p", "portfolio", portfolioSchema());
+    assert.equal(await loadCollectionTemplate("p", "portfolio"), null);
+  });
+});
+
+async function readOrder(folder, type) {
+  try {
+    return (await fs.readJSON(getProjectCollectionOrderPath(folder, type))).order;
+  } catch {
+    return null;
+  }
+}
+
+// ============================================================================
+// buildCollectionItemData (Phase 4)
+// ============================================================================
+
+describe("buildCollectionItemData", () => {
+  it("creates a new item: generates uuid, derives slug from title, sets timestamps", () => {
+    const { item, previousSlug } = buildCollectionItemData(portfolioSchema(), {
+      settings: { title: "Hello World" },
+    });
+    assert.equal(item.slug, "hello-world");
+    assert.equal(item.id, "hello-world");
+    assert.ok(item.uuid && item.uuid.length > 0);
+    assert.ok(item.created && item.updated);
+    assert.equal(previousSlug, null);
+  });
+
+  it("preserves uuid and created when updating an existing item", () => {
+    const existing = itemFile("alpha", { uuid: "keep-uuid", created: "2020-01-01T00:00:00.000Z" });
+    const { item, previousSlug } = buildCollectionItemData(
+      portfolioSchema(),
+      { slug: "alpha", settings: { title: "Alpha" } },
+      existing,
+    );
+    assert.equal(item.uuid, "keep-uuid");
+    assert.equal(item.created, "2020-01-01T00:00:00.000Z");
+    assert.equal(previousSlug, "alpha");
+  });
+
+  it("sets updated strictly greater than the previous value (monotonic, clock-skew safe)", () => {
+    const existing = itemFile("a", { updated: "2099-01-01T00:00:00.000Z" });
+    const { item } = buildCollectionItemData(
+      portfolioSchema(),
+      { slug: "a", settings: { title: "A" } },
+      existing,
+    );
+    assert.ok(Date.parse(item.updated) > Date.parse("2099-01-01T00:00:00.000Z"));
+  });
+
+  it("preserves orphaned (out-of-schema) settings on save (BLOCKER-2)", () => {
+    const existing = itemFile("a", {
+      settings: { title: "A", subtitle: "orphan-value" },
+    });
+    const { item } = buildCollectionItemData(
+      portfolioSchema(),
+      { slug: "a", settings: { title: "A" } },
+      existing,
+    );
+    assert.equal(item.settings.subtitle, "orphan-value");
+  });
+
+  it("throws a validation error when a required field is empty", () => {
+    assert.throws(
+      () => buildCollectionItemData(portfolioSchema(), { settings: { title: "" } }),
+      (err) => Array.isArray(err.validationErrors) && err.validationErrors.some((e) => e.fieldId === "title"),
+    );
+  });
+});
+
+// ============================================================================
+// writeCollectionItem / delete / bulkDelete / duplicate (Phase 4)
+// ============================================================================
+
+describe("write-side storage", () => {
+  beforeEach(async () => {
+    await fs.remove(path.join(TEST_ROOT, "data"));
+  });
+
+  it("creates a new item file", async () => {
+    await setupCollection("p", "portfolio", portfolioSchema());
+    const { item } = buildCollectionItemData(portfolioSchema(), { settings: { title: "Alpha" } });
+    await writeCollectionItem("pid", "p", "portfolio", item, null);
+    const read = await readCollectionItem("p", "portfolio", item.slug);
+    assert.equal(read.title, "Alpha");
+  });
+
+  it("rejects creating an item whose slug already exists (409-able)", async () => {
+    await setupCollection("p", "portfolio", portfolioSchema(), [itemFile("alpha")]);
+    const { item } = buildCollectionItemData(portfolioSchema(), {
+      slug: "alpha",
+      settings: { title: "Alpha" },
+    });
+    await assert.rejects(writeCollectionItem("pid", "p", "portfolio", item, null), (err) => {
+      assert.equal(err.conflictingSlug, "alpha");
+      return true;
+    });
+  });
+
+  it("updates without rename by overwriting atomically", async () => {
+    await setupCollection("p", "portfolio", portfolioSchema(), [
+      itemFile("alpha", { settings: { title: "Old" } }),
+    ]);
+    const existing = await fs.readJSON(getProjectCollectionItemPath("p", "portfolio", "alpha"));
+    const { item, previousSlug } = buildCollectionItemData(
+      portfolioSchema(),
+      { slug: "alpha", settings: { title: "New" } },
+      existing,
+    );
+    await writeCollectionItem("pid", "p", "portfolio", item, previousSlug);
+    const read = await readCollectionItem("p", "portfolio", "alpha");
+    assert.equal(read.title, "New");
+  });
+
+  it("renames: writes new slug, removes old file, updates _order.json", async () => {
+    await setupCollection(
+      "p",
+      "portfolio",
+      portfolioSchema(),
+      [itemFile("alpha", { uuid: "uA", settings: { title: "Alpha" } })],
+      ["alpha"],
+    );
+    const existing = await fs.readJSON(getProjectCollectionItemPath("p", "portfolio", "alpha"));
+    const { item, previousSlug } = buildCollectionItemData(
+      portfolioSchema(),
+      { slug: "renamed", settings: { title: "Alpha" } },
+      existing,
+    );
+    await writeCollectionItem("pid", "p", "portfolio", item, previousSlug);
+
+    assert.equal(item.uuid, "uA"); // uuid preserved across rename
+    assert.equal(await fs.pathExists(getProjectCollectionItemPath("p", "portfolio", "renamed")), true);
+    assert.equal(await fs.pathExists(getProjectCollectionItemPath("p", "portfolio", "alpha")), false);
+    assert.deepEqual(await readOrder("p", "portfolio"), ["renamed"]);
+  });
+
+  it("rejects renaming onto an existing slug", async () => {
+    await setupCollection("p", "portfolio", portfolioSchema(), [
+      itemFile("alpha", { uuid: "uA" }),
+      itemFile("beta", { uuid: "uB" }),
+    ]);
+    const existing = await fs.readJSON(getProjectCollectionItemPath("p", "portfolio", "alpha"));
+    const { item, previousSlug } = buildCollectionItemData(
+      portfolioSchema(),
+      { slug: "beta", settings: { title: "Alpha" } },
+      existing,
+    );
+    await assert.rejects(writeCollectionItem("pid", "p", "portfolio", item, previousSlug), (err) => {
+      assert.equal(err.conflictingSlug, "beta");
+      return true;
+    });
+  });
+
+  it("deletes the duplicate-uuid loser sibling on the next save", async () => {
+    await setupCollection("p", "portfolio", portfolioSchema(), [
+      itemFile("keep", { uuid: "shared", updated: "2026-02-01T00:00:00.000Z" }),
+      itemFile("loser", { uuid: "shared", updated: "2026-01-01T00:00:00.000Z" }),
+    ]);
+    const existing = await fs.readJSON(getProjectCollectionItemPath("p", "portfolio", "keep"));
+    const { item, previousSlug } = buildCollectionItemData(
+      portfolioSchema(),
+      { slug: "keep", settings: { title: "Keep" } },
+      existing,
+    );
+    await writeCollectionItem("pid", "p", "portfolio", item, previousSlug);
+    assert.equal(await fs.pathExists(getProjectCollectionItemPath("p", "portfolio", "keep")), true);
+    assert.equal(await fs.pathExists(getProjectCollectionItemPath("p", "portfolio", "loser")), false);
+  });
+
+  it("deletes an item and prunes it (and stale slugs) from _order.json", async () => {
+    await setupCollection("p", "portfolio", portfolioSchema(), [itemFile("alpha")], [
+      "alpha",
+      "ghost",
+    ]);
+    await deleteCollectionItem("pid", "p", "portfolio", "alpha");
+    assert.equal(await fs.pathExists(getProjectCollectionItemPath("p", "portfolio", "alpha")), false);
+    assert.deepEqual(await readOrder("p", "portfolio"), []); // alpha removed, ghost pruned
+  });
+
+  it("bulk-deletes, reporting deleted/notFound and pruning order", async () => {
+    await setupCollection(
+      "p",
+      "portfolio",
+      portfolioSchema(),
+      [itemFile("a"), itemFile("b"), itemFile("c")],
+      ["a", "b", "c"],
+    );
+    const result = await bulkDeleteCollectionItems("pid", "p", "portfolio", ["a", "c", "ghost"]);
+    assert.deepEqual(result.deleted.sort(), ["a", "c"]);
+    assert.deepEqual(result.notFound, ["ghost"]);
+    assert.deepEqual(await readOrder("p", "portfolio"), ["b"]);
+  });
+
+  it("duplicates an item: new uuid, copy-suffixed slug+title, inserted after source", async () => {
+    await setupCollection(
+      "p",
+      "portfolio",
+      portfolioSchema(),
+      [itemFile("alpha", { uuid: "uA", settings: { title: "Alpha" } })],
+      ["alpha"],
+    );
+    const dup = await duplicateCollectionItem("pid", "p", "portfolio", "alpha");
+    assert.notEqual(dup.uuid, "uA");
+    assert.match(dup.slug, /^alpha-copy/);
+    assert.equal(dup.settings.title, "Alpha (copy)");
+    const order = await readOrder("p", "portfolio");
+    assert.equal(order[0], "alpha");
+    assert.equal(order[1], dup.slug); // inserted immediately after source
+  });
+});
+
+// keep getProjectCollectionDir referenced (used indirectly via service)
+void getProjectCollectionDir;
