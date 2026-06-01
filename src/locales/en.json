@@ -16,6 +16,81 @@
     "general": "General",
     "appSettings": "General settings"
   },
+  "collections": {
+    "loading": "Loading items...",
+    "newItem": "New {{name}}",
+    "count": "{{count}} item",
+    "count_other": "{{count}} items",
+    "selected": "{{count}} selected",
+    "delete": "Delete",
+    "deleteSelected": "Delete selected",
+    "searchPlaceholder": "Search {{name}}...",
+    "needsAttentionCount": "{{count}} item needs attention",
+    "needsAttentionCount_other": "{{count}} items need attention",
+    "showNeedsAttention": "Needs attention",
+    "showAll": "Show all",
+    "invalidBadge": "Needs attention",
+    "headers": {
+      "title": "Title",
+      "updated": "Updated",
+      "actions": "Actions"
+    },
+    "noItemsFound": "No items found",
+    "noItemsMatch": "No items match \"{{term}}\". Try a different search term.",
+    "noItemsAvailable": "No items available",
+    "noItemsYet": "No {{name}} yet",
+    "createFirst": "Create your first {{name}} to get started.",
+    "notFound": "Collection not found",
+    "notFoundHelp": "This collection type is not defined by the current theme.",
+    "actions": {
+      "menu": "Item actions",
+      "edit": "Edit",
+      "duplicate": "Duplicate",
+      "delete": "Delete"
+    },
+    "toasts": {
+      "loadError": "Failed to load items",
+      "deleteSuccess": "Item deleted successfully",
+      "deleteBulkSuccess": "Successfully deleted {{count}} item",
+      "deleteBulkSuccess_other": "Successfully deleted {{count}} items",
+      "deleteError": "Failed to delete item(s)",
+      "duplicateSuccess": "Item duplicated successfully",
+      "duplicateError": "Failed to duplicate item",
+      "reorderError": "Failed to reorder items"
+    },
+    "deleteModal": {
+      "title": "Delete item",
+      "message": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
+      "confirm": "Delete",
+      "cancel": "Cancel",
+      "titleBulk": "Delete items",
+      "messageBulk": "Are you sure you want to delete {{count}} item? This action cannot be undone.",
+      "messageBulk_other": "Are you sure you want to delete {{count}} items? This action cannot be undone.",
+      "confirmBulk": "Delete {{count}} item",
+      "confirmBulk_other": "Delete {{count}} items"
+    }
+  },
+  "collectionsForm": {
+    "addTitle": "New {{name}}",
+    "editTitle": "Edit {{name}}",
+    "loading": "Loading...",
+    "loadError": "Failed to load item",
+    "slugLabel": "Slug",
+    "slugHelp": "The URL-friendly identifier for this item. Auto-generated from the title.",
+    "slugRequired": "Slug is required",
+    "slugNotEmpty": "Slug cannot be empty",
+    "create": "Create",
+    "saveChanges": "Save changes",
+    "backToList": "Back to list",
+    "fieldRequired": "This field is required",
+    "toasts": {
+      "createSuccess": "{{name}} created",
+      "createError": "Failed to create item",
+      "updateSuccess": "{{name}} updated",
+      "updateSuccessUrlChanged": "{{name}} updated. The URL changed to match the new slug.",
+      "updateError": "Failed to update item"
+    }
+  },
   "layout": {
     "toolbar": {
       "profile": "Profile",
