@@ -32,6 +32,7 @@ import {
 } from "./collectionService.js";
 import { preprocessThemeSettings } from "../utils/themeHelpers.js";
 import { buildRuntimeSiteIcons, prefixSiteIcons } from "../utils/siteIconHelpers.js";
+import { prefixInternalHref, normalize } from "../utils/linkPrefixer.js";
 import { getProjectFolderName } from "../utils/projectHelpers.js";
 import { isProjectResolutionError } from "../utils/projectErrors.js";
 import { sanitizeWidgetData } from "./sanitizationService.js";
@@ -134,7 +135,7 @@ function isLinkObject(value) {
  * @param {Map} pagesByUuid - Map of uuid -> page data
  * @returns {object} Resolved link object
  */
-function resolveLinkValue(linkValue, pagesByUuid) {
+function resolveLinkValue(linkValue, pagesByUuid, outputPathPrefix = "") {
   if (!linkValue || typeof linkValue !== "object") {
     return linkValue;
   }
@@ -150,10 +151,10 @@ function resolveLinkValue(linkValue, pagesByUuid) {
   const page = pagesByUuid.get(pageUuid);
 
   if (page) {
-    // Page exists - update href to current slug
+    // Page exists - update href to current slug, depth-aware for nested pages
     return {
       ...linkValue,
-      href: `${page.slug}.html`,
+      href: prefixInternalHref(`${page.slug}.html`, outputPathPrefix),
     };
   } else {
     // Page was deleted - clear the link
@@ -173,7 +174,7 @@ function resolveLinkValue(linkValue, pagesByUuid) {
  * @param {Map} pagesByUuid - Map of uuid -> page data
  * @returns {object} Widget data with resolved links
  */
-function resolveWidgetPageLinks(widgetData, pagesByUuid) {
+function resolveWidgetPageLinks(widgetData, pagesByUuid, outputPathPrefix = "") {
   if (!widgetData || !pagesByUuid || pagesByUuid.size === 0) {
     return widgetData;
   }
@@ -185,7 +186,7 @@ function resolveWidgetPageLinks(widgetData, pagesByUuid) {
   if (resolved.settings && typeof resolved.settings === "object") {
     for (const [key, value] of Object.entries(resolved.settings)) {
       if (isLinkObject(value)) {
-        resolved.settings[key] = resolveLinkValue(value, pagesByUuid);
+        resolved.settings[key] = resolveLinkValue(value, pagesByUuid, outputPathPrefix);
       }
     }
   }
@@ -196,7 +197,7 @@ function resolveWidgetPageLinks(widgetData, pagesByUuid) {
       if (block && block.settings && typeof block.settings === "object") {
         for (const [key, value] of Object.entries(block.settings)) {
           if (isLinkObject(value)) {
-            resolved.blocks[blockId].settings[key] = resolveLinkValue(value, pagesByUuid);
+            resolved.blocks[blockId].settings[key] = resolveLinkValue(value, pagesByUuid, outputPathPrefix);
           }
         }
       }
@@ -213,30 +214,40 @@ function resolveWidgetPageLinks(widgetData, pagesByUuid) {
  * @param {Map} pagesByUuid - Map of uuid -> page data
  * @returns {Array} Menu items with resolved links
  */
-function resolveMenuItemLinks(menuItems, pagesByUuid) {
-  if (!menuItems || !Array.isArray(menuItems) || pagesByUuid.size === 0) {
+function resolveMenuItemLinks(menuItems, pagesByUuid, outputPathPrefix = "") {
+  if (!menuItems || !Array.isArray(menuItems)) {
     return menuItems;
   }
 
   return menuItems.map((item) => {
     const resolved = { ...item };
 
-    // If item has pageUuid, resolve to current slug
+    // Resolve the href for this item, computing both the emitted (depth-aware,
+    // prefixed) `link` and the un-prefixed `canonicalPath` used for active-state
+    // matching. Every item is processed — including custom URLs — so links work
+    // from any output depth, not just pageUuid-resolved ones.
     if (item.pageUuid) {
-      const page = pagesByUuid.get(item.pageUuid);
+      const page = pagesByUuid && pagesByUuid.get(item.pageUuid);
       if (page) {
-        // Page exists - update link to current slug
-        resolved.link = `${page.slug}.html`;
+        const href = `${page.slug}.html`;
+        resolved.link = prefixInternalHref(href, outputPathPrefix);
+        resolved.canonicalPath = normalize(href);
       } else {
         // Page was deleted - clear the link
         resolved.link = "";
+        resolved.canonicalPath = "";
         delete resolved.pageUuid;
       }
+    } else if (typeof item.link === "string" && item.link) {
+      resolved.link = prefixInternalHref(item.link, outputPathPrefix);
+      resolved.canonicalPath = normalize(item.link);
+    } else {
+      resolved.canonicalPath = "";
     }
 
     // Recursively resolve children
     if (item.items && Array.isArray(item.items) && item.items.length > 0) {
-      resolved.items = resolveMenuItemLinks(item.items, pagesByUuid);
+      resolved.items = resolveMenuItemLinks(item.items, pagesByUuid, outputPathPrefix);
     }
 
     return resolved;
@@ -249,14 +260,14 @@ function resolveMenuItemLinks(menuItems, pagesByUuid) {
  * @param {Map} pagesByUuid - Map of uuid -> page data
  * @returns {object} Menu data with resolved links
  */
-function resolveMenuPageLinks(menuData, pagesByUuid) {
+function resolveMenuPageLinks(menuData, pagesByUuid, outputPathPrefix = "") {
   if (!menuData || !menuData.items) {
     return menuData;
   }
 
   return {
     ...menuData,
-    items: resolveMenuItemLinks(menuData.items, pagesByUuid),
+    items: resolveMenuItemLinks(menuData.items, pagesByUuid, outputPathPrefix),
   };
 }
 
@@ -681,6 +692,9 @@ async function renderWidget(
       }
     }
 
+    // Depth-aware prefix for links/menus emitted by this widget ("" for pages).
+    const outputPathPrefix = (sharedGlobals && sharedGlobals.outputPathPrefix) || "";
+
     // Handle menu settings - check schema for menu type settings
     const menuSettingIds = new Set();
     if (Array.isArray(schema.settings)) {
@@ -722,7 +736,7 @@ async function renderWidget(
           if (value) {
             const menuData = menuMaps.byUuid.get(value) || menuMaps.bySlug.get(value);
             // Resolve page links in menu items (pageUuid -> current slug)
-            enhancedSettings[key] = resolveMenuPageLinks(menuData, pagesByUuid) || { items: [] };
+            enhancedSettings[key] = resolveMenuPageLinks(menuData, pagesByUuid, outputPathPrefix) || { items: [] };
           } else {
             enhancedSettings[key] = { items: [] }; // Ensure empty menu if no value set
           }
@@ -742,7 +756,7 @@ async function renderWidget(
         try {
           if (value) {
             const menuData = menuMaps.byUuid.get(value) || menuMaps.bySlug.get(value);
-            block.settings[settingId] = resolveMenuPageLinks(menuData, pagesByUuid) || { items: [] };
+            block.settings[settingId] = resolveMenuPageLinks(menuData, pagesByUuid, outputPathPrefix) || { items: [] };
           } else {
             block.settings[settingId] = { items: [] };
           }
@@ -758,6 +772,7 @@ async function renderWidget(
     const resolvedWidgetData = resolveWidgetPageLinks(
       { settings: enhancedSettings, blocks: enhancedBlocks },
       pagesByUuid,
+      outputPathPrefix,
     );
 
     // Sanitize settings based on schema types (text, richtext, link, etc.)
@@ -965,4 +980,12 @@ async function widgetSupportsTransparentHeader(projectId, widgetType) {
   }
 }
 
-export { renderWidget, renderPageLayout, renderEnqueuedAssetTags, widgetSupportsTransparentHeader };
+export {
+  renderWidget,
+  renderPageLayout,
+  renderEnqueuedAssetTags,
+  widgetSupportsTransparentHeader,
+  resolveLinkValue,
+  resolveMenuItemLinks,
+  resolveMenuPageLinks,
+};

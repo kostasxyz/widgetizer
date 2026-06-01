@@ -284,6 +284,8 @@ export async function exportProjectToDir(projectId, options = {}) {
         enqueuedScripts: new Map(),
         exportVersion: version, // For cache busting
         pageSlug: pageData.slug || "",
+        // Un-prefixed path of this page, for menu active-state matching.
+        currentCanonicalPath: `${pageData.slug || ""}.html`,
       };
 
       // Render header if exists (for each page to capture enqueued assets)

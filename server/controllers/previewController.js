@@ -65,6 +65,8 @@ async function generatePreviewHtml(pageData, rawThemeSettings, previewMode) {
     enqueuedStyles: new Map(),
     enqueuedScripts: new Map(),
     pageSlug: pageData.slug || "",
+    // Un-prefixed path of this page, for menu active-state matching.
+    currentCanonicalPath: `${pageData.slug || ""}.html`,
   };
 
   let headerContent = "";
