@@ -278,6 +278,39 @@ Suggested fix: either document/reject `menu` fields for collection schemas in v1
 or resolve schema-declared `menu` settings before item template render using the
 same menu-map/page-link/depth-prefix logic as widget rendering.
 
+### 11. Menu editor cannot select collection item pages as stable targets
+
+Simple: collection item pages can exist, but menu authors cannot pick them from
+the menu editor's page selector.
+
+The menu structure editor loads only normal pages from `/api/pages` and turns
+those into `pageUuid`-backed options. A user can manually type a collection item
+URL such as `portfolio/project-alpha.html`, and depth-aware export can prefix it
+as a custom URL, but it remains a plain string. It will not update if the
+collection item slug changes, and it will not be cleaned up if the collection
+item is deleted.
+
+Evidence:
+
+- `src/components/menus/MenuEditor/index.jsx:78-90` fetches only `getAllPages()`
+  and builds page options from page UUIDs.
+- `src/components/menus/MenuEditor/SortableItem.jsx:79-103` stores `pageUuid`
+  only when the selected value matches one of those page options; otherwise it
+  treats the value as a custom URL.
+- `src/components/menus/MenuEditor/MenuCombobox.jsx:88-90` tells users "No
+  matching pages found" and falls back to typed custom links.
+- `server/services/renderingService.js:217-250` can depth-prefix custom menu
+  links, but there is no collection-item stable reference equivalent to
+  `pageUuid`.
+
+Impact: medium-low. Collection item pages remain linkable by hand, but they are
+not first-class navigation targets and can drift when item slugs change.
+
+Suggested fix: extend the menu target picker to include `hasItemPages`
+collection items, and decide whether to add stable item references
+(`collectionType` + item `uuid`) that resolve to the current item slug at render
+time.
+
 ## Checks Performed
 
 - `git diff --check master...HEAD` passed.
