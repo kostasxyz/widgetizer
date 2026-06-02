@@ -244,6 +244,40 @@ Suggested fix: include the current page slug/canonical path in the
 `/api/preview/widget` request body, or force full reloads for widgets that render
 menu settings.
 
+### 10. Collection `menu` fields store a menu UUID but do not render as menu data
+
+Simple: collections say they support the `menu` setting type, but item templates
+only receive the raw stored menu value.
+
+Collection schemas are allowed to use every setting type in
+`supportedSettingTypes.js`, including `menu`. The collection form can render a
+menu picker and store the selected menu's UUID. Widget rendering has special
+schema-aware logic that turns menu setting values into resolved menu objects
+with `items`, depth-aware links, and active-state data. Collection item rendering
+only resolves `link` objects, so a collection template that tries to render a
+menu setting gets a UUID string instead of the menu object expected by the menu
+snippet.
+
+Evidence:
+
+- `docs-llms/core-collections.md:125` lists `menu` as a supported collection
+  setting type.
+- `src/components/settings/inputs/MenuSelectInput.jsx:7` documents that the
+  menu input stores the menu's stable UUID.
+- `server/services/renderingService.js:698-767` resolves `menu` settings for
+  widgets and blocks.
+- `server/services/collectionService.js:914-923` resolves collection item
+  settings only when they are link objects.
+- `src/core/snippets/menu.liquid:20-28` expects a menu object with `items`, not
+  a raw UUID string.
+
+Impact: low. No shipped collection schema appears to use `menu`, but the
+documented "all setting types" contract is incomplete for collection templates.
+
+Suggested fix: either document/reject `menu` fields for collection schemas in v1,
+or resolve schema-declared `menu` settings before item template render using the
+same menu-map/page-link/depth-prefix logic as widget rendering.
+
 ## Checks Performed
 
 - `git diff --check master...HEAD` passed.
