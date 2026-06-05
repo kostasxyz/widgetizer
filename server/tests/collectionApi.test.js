@@ -295,6 +295,27 @@ describe("update / delete / duplicate / reorder", () => {
     assert.deepEqual(partial._json.notFound, ["ghost"]);
   });
 
+  it("bulk-delete cannot escape the collection dir via a traversal slug", async () => {
+    // A file outside collections/portfolio that a crafted slug would resolve to:
+    // getProjectCollectionItemPath(folder, "portfolio", "../../pages/victim")
+    //   -> <projectDir>/pages/victim.json
+    const victimPath = path.join(getProjectDir(PROJECT_FOLDER), "pages", "victim.json");
+    await fs.outputJSON(victimPath, { keep: "me" });
+
+    const res = await call(collectionController.bulkDeleteItems, {
+      params: { collectionType: "portfolio" },
+      body: { itemSlugs: ["../../pages/victim"] },
+    });
+
+    // The traversal slug is reported as an error, never deleted.
+    assert.equal(res._status, 207);
+    assert.deepEqual(res._json.deleted, []);
+    assert.equal(res._json.errors.length, 1);
+    assert.equal(res._json.errors[0].slug, "../../pages/victim");
+    // The out-of-collection file survives untouched.
+    assert.equal(await fs.pathExists(victimPath), true);
+  });
+
   it("duplicates an item (201) and 404 on missing source", async () => {
     const dup = await call(collectionController.duplicateItem, {
       params: { collectionType: "portfolio", itemSlug: "alpha" },

@@ -775,6 +775,12 @@ export async function bulkDeleteCollectionItems(
   const errors = [];
 
   for (const slug of itemSlugs) {
+    // Belt-and-braces against path traversal: never build a path from an
+    // unvalidated slug, even though the route validator already rejects them.
+    if (typeof slug !== "string" || !SLUG_RE.test(slug)) {
+      errors.push({ slug, message: "Invalid slug" });
+      continue;
+    }
     const itemPath = getProjectCollectionItemPath(projectFolderName, collectionType, slug);
     try {
       if (await fs.pathExists(itemPath)) {

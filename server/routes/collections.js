@@ -15,6 +15,16 @@ const slugParam = (name) =>
     .matches(/^[a-z0-9-]+$/)
     .withMessage(`${name} must contain lowercase letters, numbers, and hyphens only.`);
 
+// Validates each element of a body array (e.g. `itemSlugs.*`, `order.*`) as a
+// safe slug, so a crafted value like "../../pages/index" can never reach a path
+// helper. Mirrors `slugParam` for body-array inputs.
+const slugBody = (name) =>
+  body(name)
+    .isString()
+    .bail()
+    .matches(/^[a-z0-9-]+$/)
+    .withMessage(`${name} must contain lowercase letters, numbers, and hyphens only.`);
+
 // Schema endpoints
 router.get("/schemas", collectionController.getCollectionSchemas);
 router.get(
@@ -61,7 +71,7 @@ router.delete(
 );
 router.post(
   "/:collectionType/bulk-delete",
-  [slugParam("collectionType"), body("itemSlugs").isArray({ min: 1 })],
+  [slugParam("collectionType"), body("itemSlugs").isArray({ min: 1 }), slugBody("itemSlugs.*")],
   validateRequest,
   collectionController.bulkDeleteItems,
 );
@@ -73,7 +83,7 @@ router.post(
 );
 router.post(
   "/:collectionType/reorder",
-  [slugParam("collectionType"), body("order").isArray()],
+  [slugParam("collectionType"), body("order").isArray(), slugBody("order.*")],
   validateRequest,
   collectionController.reorderItems,
 );

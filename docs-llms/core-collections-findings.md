@@ -10,7 +10,7 @@ updates.
 
 ## Findings
 
-### 1. Bulk delete can delete files outside the collection
+### 1. Bulk delete can delete files outside the collection — ✅ Resolved (2026-06-05)
 
 Simple: the bulk-delete endpoint trusts body values as filenames.
 
@@ -30,6 +30,15 @@ Impact: high. This is a destructive path traversal/data-loss bug.
 Suggested fix: validate every `itemSlugs.*` with the same slug regex as route
 params, and defensively re-check inside `bulkDeleteCollectionItems()` before
 path construction.
+
+**Resolution:** Added a `slugBody` validator in `server/routes/collections.js`
+that applies `^[a-z0-9-]+$` to each `itemSlugs.*` element (and `order.*` on the
+reorder route, which had the same untrusted-array gap). Added a belt-and-braces
+re-check inside `bulkDeleteCollectionItems()` that pushes invalid slugs to the
+partial-failure `errors` array instead of building a path. Regression test
+`bulk-delete cannot escape the collection dir via a traversal slug` in
+`server/tests/collectionApi.test.js` confirms a `../../pages/victim` slug is
+rejected and the out-of-collection file survives.
 
 ### 2. Collection richtext and link fields bypass sanitization
 
