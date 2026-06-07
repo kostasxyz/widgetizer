@@ -13,6 +13,7 @@ import {
   updateCollectionItemMediaUsage,
   removeCollectionItemFromMediaUsage,
 } from "../services/mediaUsageService.js";
+import { cleanupDeletedCollectionItemReferences } from "../utils/linkEnrichment.js";
 
 /** Map a service error to an HTTP response, or 500 for the unexpected. */
 function respondError(res, err) {
@@ -153,6 +154,14 @@ export async function deleteItem(req, res) {
   try {
     const folder = req.activeProject.folderName;
     const { collectionType, itemSlug } = req.params;
+    // Capture the uuid before deleting so menu references to it can be scrubbed (#11).
+    // Best-effort: a corrupt/unreadable item must never block its own deletion.
+    let existing = null;
+    try {
+      existing = await collectionService.readRawCollectionItem(folder, collectionType, itemSlug);
+    } catch {
+      existing = null;
+    }
     const result = await collectionService.deleteCollectionItem(
       req.activeProject.id,
       folder,
@@ -161,6 +170,7 @@ export async function deleteItem(req, res) {
     );
     if (!result.deleted) return noStore(res).status(404).json({ error: "Item not found" });
     await removeCollectionItemFromMediaUsage(req.activeProject.id, collectionType, itemSlug);
+    if (existing?.uuid) await cleanupDeletedCollectionItemReferences(folder, existing.uuid);
     noStore(res).json({ success: true, slug: itemSlug });
   } catch (err) {
     respondError(res, err);
@@ -171,6 +181,17 @@ export async function bulkDeleteItems(req, res) {
   try {
     const folder = req.activeProject.folderName;
     const { collectionType } = req.params;
+    // Capture uuids before deletion so menu references can be scrubbed (#11).
+    // Best-effort per item: an unreadable item is skipped, not fatal to the bulk.
+    const uuidBySlug = new Map();
+    for (const slug of req.body.itemSlugs || []) {
+      try {
+        const raw = await collectionService.readRawCollectionItem(folder, collectionType, slug);
+        if (raw?.uuid) uuidBySlug.set(slug, raw.uuid);
+      } catch {
+        // skip cleanup for this slug; deletion still proceeds below
+      }
+    }
     const result = await collectionService.bulkDeleteCollectionItems(
       req.activeProject.id,
       folder,
@@ -180,6 +201,8 @@ export async function bulkDeleteItems(req, res) {
     for (const slug of result.deleted) {
       await removeCollectionItemFromMediaUsage(req.activeProject.id, collectionType, slug);
     }
+    const deletedUuids = result.deleted.map((slug) => uuidBySlug.get(slug)).filter(Boolean);
+    if (deletedUuids.length > 0) await cleanupDeletedCollectionItemReferences(folder, deletedUuids);
     const partial = result.notFound.length > 0 || result.errors.length > 0;
     noStore(res)
       .status(partial ? 207 : 200)

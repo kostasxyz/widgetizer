@@ -23,11 +23,14 @@ process.env.NODE_ENV = "test";
 const _origWarn = console.warn;
 console.warn = () => {};
 
-const { getProjectDir, getProjectPagesDir, getProjectCollectionItemPath } = await import(
-  "../config.js"
-);
-const { cleanupDeletedPageReferences, enrichNewProjectReferences, remapDuplicatedProjectUuids } =
-  await import("../utils/linkEnrichment.js");
+const { getProjectDir, getProjectPagesDir, getProjectCollectionItemPath, getProjectMenusDir } =
+  await import("../config.js");
+const {
+  cleanupDeletedPageReferences,
+  cleanupDeletedCollectionItemReferences,
+  enrichNewProjectReferences,
+  remapDuplicatedProjectUuids,
+} = await import("../utils/linkEnrichment.js");
 const { updateCollectionItemMediaUsage } = await import("../services/mediaUsageService.js");
 const projectRepo = await import("../db/repositories/projectRepository.js");
 const { readMediaFile } = await import("../services/mediaService.js");
@@ -75,6 +78,17 @@ async function writePage(slug, uuid) {
     widgets: {},
   });
 }
+async function writeMenu(menuId, items, uuid = `menu-${menuId}`) {
+  await fs.outputJSON(path.join(getProjectMenusDir(PROJECT_FOLDER), `${menuId}.json`), {
+    id: menuId,
+    uuid,
+    name: menuId,
+    items,
+  });
+}
+async function readMenu(menuId) {
+  return fs.readJSON(path.join(getProjectMenusDir(PROJECT_FOLDER), `${menuId}.json`));
+}
 
 describe("cleanupDeletedPageReferences — collection items", () => {
   it("clears link settings that point to the deleted page", async () => {
@@ -106,6 +120,36 @@ describe("cleanupDeletedPageReferences — collection items", () => {
   });
 });
 
+describe("cleanupDeletedCollectionItemReferences — menu refs (#11)", () => {
+  it("clears menu items pointing at the deleted item, leaves other refs intact", async () => {
+    await writeMenu("main", [
+      { id: "i1", label: "Suite", link: "rooms/suite.html", collectionType: "rooms", collectionItemUuid: "item-suite" },
+      { id: "i2", label: "Villa", link: "rooms/villa.html", collectionType: "rooms", collectionItemUuid: "item-villa" },
+      { id: "i3", label: "About", link: "about.html", pageUuid: "page-about" },
+    ]);
+
+    await cleanupDeletedCollectionItemReferences(PROJECT_FOLDER, "item-suite");
+
+    const menu = await readMenu("main");
+    assert.equal(menu.items[0].link, "");
+    assert.equal("collectionItemUuid" in menu.items[0], false);
+    assert.equal("collectionType" in menu.items[0], false);
+    assert.equal(menu.items[1].collectionItemUuid, "item-villa"); // untouched
+    assert.equal(menu.items[2].pageUuid, "page-about"); // untouched
+  });
+
+  it("accepts multiple uuids (bulk delete)", async () => {
+    await writeMenu("main", [
+      { id: "i1", label: "A", link: "rooms/a.html", collectionItemUuid: "item-a" },
+      { id: "i2", label: "B", link: "rooms/b.html", collectionItemUuid: "item-b" },
+    ]);
+    await cleanupDeletedCollectionItemReferences(PROJECT_FOLDER, ["item-a", "item-b"]);
+    const menu = await readMenu("main");
+    assert.equal(menu.items[0].link, "");
+    assert.equal(menu.items[1].link, "");
+  });
+});
+
 describe("enrichNewProjectReferences — collection items", () => {
   it("converts a slug-format link href into a pageUuid", async () => {
     await writePage("about", "page-about-uuid");
@@ -134,5 +178,19 @@ describe("remapDuplicatedProjectUuids — collection items", () => {
     assert.notEqual(newPage.uuid, "old-page-uuid"); // page uuid regenerated
     assert.equal(item.settings.cta.pageUuid, newPage.uuid); // ref remapped to new page uuid
     assert.notEqual(item.uuid, "item-alpha"); // item's own uuid regenerated
+  });
+
+  it("remaps a menu's collectionItemUuid to the item's new uuid (#11)", async () => {
+    await writeItem("rooms", "suite", { title: "Suite" }); // uuid item-suite
+    await writeMenu("main", [
+      { id: "i1", label: "Suite", link: "rooms/suite.html", collectionType: "rooms", collectionItemUuid: "item-suite" },
+    ]);
+
+    await remapDuplicatedProjectUuids(PROJECT_FOLDER);
+
+    const item = await readItem("rooms", "suite");
+    const menu = await readMenu("main");
+    assert.notEqual(item.uuid, "item-suite"); // item uuid regenerated
+    assert.equal(menu.items[0].collectionItemUuid, item.uuid); // menu ref remapped to new uuid
   });
 });

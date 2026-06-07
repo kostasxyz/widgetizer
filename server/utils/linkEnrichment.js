@@ -322,8 +322,18 @@ export async function remapDuplicatedProjectUuids(projectFolderName) {
 
   const oldToNewUuid = new Map();
   const oldToNewMenuUuid = new Map();
+  const oldToNewItemUuid = new Map();
 
-  // Step 1: Regenerate page UUIDs and build mapping
+  // Step 1: Regenerate collection item UUIDs FIRST, building the old->new map so
+  // the menu pass below can remap stable collection-item references (#11). Every
+  // item gets a fresh identity in the duplicated project (always rewritten).
+  await updateCollectionItems(projectFolderName, (item) => {
+    const newUuid = randomUUID();
+    if (item.uuid) oldToNewItemUuid.set(item.uuid, newUuid);
+    return { item: { ...item, uuid: newUuid }, changed: true };
+  });
+
+  // Step 2: Regenerate page UUIDs and build mapping
   const pageFiles = await fs.readdir(pagesDir);
   for (const pageFile of pageFiles) {
     if (!pageFile.endsWith(".json")) continue;
@@ -342,7 +352,8 @@ export async function remapDuplicatedProjectUuids(projectFolderName) {
     await fs.outputFile(pagePath, JSON.stringify(page, null, 2));
   }
 
-  // Step 2: Regenerate menu UUIDs and update menu item pageUuids
+  // Step 3: Regenerate menu UUIDs and remap menu item references — both
+  // pageUuid (oldToNewUuid) and stable collection-item refs (oldToNewItemUuid).
   if (await fs.pathExists(menusDir)) {
     const menuFiles = await fs.readdir(menusDir);
     for (const menuFile of menuFiles) {
@@ -365,6 +376,10 @@ export async function remapDuplicatedProjectUuids(projectFolderName) {
           const newUuid = oldToNewUuid.get(item.pageUuid);
           if (newUuid) item.pageUuid = newUuid;
         }
+        if (item.collectionItemUuid) {
+          const newItemUuid = oldToNewItemUuid.get(item.collectionItemUuid);
+          if (newItemUuid) item.collectionItemUuid = newItemUuid;
+        }
         return item;
       });
 
@@ -372,7 +387,7 @@ export async function remapDuplicatedProjectUuids(projectFolderName) {
     }
   }
 
-  // Step 3: Remap widget references in pages and global widgets
+  // Step 4: Remap widget references in pages and global widgets
   const remapValue = (value) => {
     if (isLinkObject(value) && value.pageUuid) {
       const newUuid = oldToNewUuid.get(value.pageUuid);
@@ -389,13 +404,9 @@ export async function remapDuplicatedProjectUuids(projectFolderName) {
   await updatePageWidgets(pagesDir, widgetProcessor);
   await updateGlobalWidgets(pagesDir, widgetProcessor);
 
-  // Step 4: Remap pageUuid refs in collection item links AND give each item its
-  // own fresh uuid so the duplicated project has an independent item identity
-  // space. (uuid always changes, so every item is rewritten.)
-  await updateCollectionItems(projectFolderName, (item) => {
-    const { item: remapped } = transformItemSettings(item, remapValue);
-    return { item: { ...remapped, uuid: randomUUID() }, changed: true };
-  });
+  // Step 5: Remap link references inside collection item settings (item uuids
+  // were already regenerated in step 1; this only fixes pageUuid/menu refs).
+  await updateCollectionItems(projectFolderName, (item) => transformItemSettings(item, remapValue));
 }
 
 /**
@@ -467,6 +478,83 @@ export async function cleanupDeletedPageReferences(
           `[linkEnrichment] Failed to sync media usage for ${type}/${slug}: ${error.message}`,
         );
       }
+    }
+  }
+}
+
+/**
+ * Clean up menu references to deleted collection item page(s) (#11). Clears the
+ * link and drops the stable-ref fields (`collectionItemUuid`/`collectionType`)
+ * on any menu item pointing at a deleted item. Only menus carry this reference —
+ * widget/collection-item link fields point at pages, not items — so only menus
+ * are walked.
+ * @param {string} projectFolderName - The project folder name
+ * @param {string|string[]|Set<string>} deletedItemUuids - uuid(s) of deleted items
+ */
+export async function cleanupDeletedCollectionItemReferences(projectFolderName, deletedItemUuids) {
+  const uuids =
+    deletedItemUuids instanceof Set
+      ? deletedItemUuids
+      : new Set(Array.isArray(deletedItemUuids) ? deletedItemUuids : [deletedItemUuids]);
+  if (uuids.size === 0) return;
+
+  const menusDir = getProjectMenusDir(projectFolderName);
+  if (!(await fs.pathExists(menusDir))) return;
+
+  const menuFiles = await fs.readdir(menusDir);
+  for (const menuFile of menuFiles) {
+    if (!menuFile.endsWith(".json")) continue;
+
+    const menuPath = path.join(menusDir, menuFile);
+    const menu = JSON.parse(await fs.readFile(menuPath, "utf8"));
+
+    const cleanedItems = processMenuItems(menu.items, (item) => {
+      if (item.collectionItemUuid && uuids.has(item.collectionItemUuid)) {
+        item.link = "";
+        delete item.collectionItemUuid;
+        delete item.collectionType;
+      }
+      return item;
+    });
+
+    if (JSON.stringify(cleanedItems) !== JSON.stringify(menu.items)) {
+      menu.items = cleanedItems;
+      await fs.outputFile(menuPath, JSON.stringify(menu, null, 2));
+    }
+  }
+}
+
+/**
+ * Remap menu `collectionItemUuid` references using an old->new item-uuid map.
+ * Used after preset seeding regenerates item uuids, so a preset menu that ships a
+ * stable collection-item reference points at the freshly seeded item (#11)
+ * instead of the dead preset/source uuid.
+ * @param {string} projectFolderName - The project folder name
+ * @param {Map<string,string>} oldToNewItemUuid - source uuid -> seeded uuid
+ */
+export async function remapCollectionItemMenuRefs(projectFolderName, oldToNewItemUuid) {
+  if (!oldToNewItemUuid || oldToNewItemUuid.size === 0) return;
+  const menusDir = getProjectMenusDir(projectFolderName);
+  if (!(await fs.pathExists(menusDir))) return;
+
+  const menuFiles = await fs.readdir(menusDir);
+  for (const menuFile of menuFiles) {
+    if (!menuFile.endsWith(".json")) continue;
+
+    const menuPath = path.join(menusDir, menuFile);
+    const menu = JSON.parse(await fs.readFile(menuPath, "utf8"));
+
+    const remapped = processMenuItems(menu.items, (item) => {
+      if (item.collectionItemUuid) {
+        const next = oldToNewItemUuid.get(item.collectionItemUuid);
+        if (next) item.collectionItemUuid = next;
+      }
+      return item;
+    });
+
+    if (JSON.stringify(remapped) !== JSON.stringify(menu.items)) {
+      menu.items = remapped;
+      await fs.outputFile(menuPath, JSON.stringify(menu, null, 2));
     }
   }
 }

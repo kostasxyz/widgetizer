@@ -25,6 +25,7 @@ import {
   removeActiveFromFlat,
 } from "./utils/treeUtils";
 import { getAllPages } from "../../../queries/pageManager";
+import { getCollectionSchemas, getCollectionItems } from "../../../queries/collectionManager";
 
 const DRAG_DEPTH_STEP = 32; // horizontal drag needed to change depth
 
@@ -75,24 +76,50 @@ function MenuEditor({ initialItems = [], onChange, onDeleteItem }) {
     [flattenedItems, activeId],
   );
 
-  // Fetch pages for the link selector - use uuid as value for stable references
+  // Fetch link targets for the selector — pages plus collection item pages.
+  // Both use a stable uuid as the option value so references survive renames (#11).
   useEffect(() => {
-    async function fetchPages() {
+    async function fetchTargets() {
       try {
         const allPages = await getAllPages();
-        setPages(
-          allPages.map((p) => ({
-            value: p.uuid, // Use uuid as value for stable reference across renames
-            label: p.name,
-            slug: p.slug, // Keep slug for deriving href
-            isPage: true,
-          })),
-        );
+        const pageOptions = allPages.map((p) => ({
+          value: p.uuid,
+          label: p.name,
+          slug: p.slug,
+          isPage: true,
+          group: "Pages",
+        }));
+
+        // Collection item pages (only collections that have item pages).
+        const itemOptions = [];
+        try {
+          const schemas = await getCollectionSchemas();
+          for (const schema of schemas) {
+            if (!schema.hasItemPages) continue;
+            const items = await getCollectionItems(schema.type);
+            for (const it of items) {
+              if (!it.uuid) continue;
+              itemOptions.push({
+                value: it.uuid,
+                label: it.title || it.slug,
+                isCollectionItem: true,
+                collectionType: schema.type,
+                slugPrefix: schema.slugPrefix,
+                slug: it.slug,
+                group: schema.displayNamePlural || schema.displayName || schema.type,
+              });
+            }
+          }
+        } catch (err) {
+          console.error("Failed to load collection items for menu targets:", err);
+        }
+
+        setPages([...pageOptions, ...itemOptions]);
       } catch (error) {
-        console.error("Failed to load pages:", error);
+        console.error("Failed to load link targets:", error);
       }
     }
-    fetchPages();
+    fetchTargets();
   }, []);
 
   // Update items when initialItems change

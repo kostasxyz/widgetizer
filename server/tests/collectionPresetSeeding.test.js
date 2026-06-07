@@ -28,6 +28,7 @@ const {
   getProjectDir,
   getProjectCollectionSchemaPath,
   getProjectCollectionItemPath,
+  getProjectMenusDir,
   getThemePresetDir,
 } = await import("../config.js");
 const { resolvePresetPaths } = await import("../controllers/themeController.js");
@@ -114,5 +115,43 @@ describe("seedPresetCollections", () => {
       await fs.pathExists(getProjectCollectionItemPath(FOLDER, "events", "expo")),
       false,
     );
+  });
+
+  it("remaps preset menu collectionItemUuid refs to the freshly seeded uuid (#11)", async () => {
+    await fs.outputJson(getProjectCollectionSchemaPath(FOLDER, "posts"), {
+      type: "posts",
+      schemaVersion: 1,
+      displayName: "Post",
+      displayNamePlural: "Posts",
+      icon: "FileText",
+      hasItemPages: true,
+      slugPrefix: "blog",
+      settings: [{ type: "text", id: "title", label: "Title", required: true, usedAsTitle: true }],
+    });
+
+    const presetCollections = path.join(TEST_ROOT, "preset-collections-menu");
+    await fs.outputJson(path.join(presetCollections, "posts", "hello.json"), {
+      id: "hello",
+      slug: "hello",
+      uuid: "PRESET-UUID",
+      settings: { title: "Hello" },
+    });
+
+    // a project menu (e.g. shipped by a preset template) pointing at the preset item
+    await fs.outputJson(path.join(getProjectMenusDir(FOLDER), "main.json"), {
+      id: "main",
+      uuid: "menu-main",
+      name: "Main",
+      items: [
+        { id: "i1", label: "Hello", link: "blog/hello.html", collectionType: "posts", collectionItemUuid: "PRESET-UUID" },
+      ],
+    });
+
+    await seedPresetCollections(FOLDER, presetCollections);
+
+    const seeded = await fs.readJson(getProjectCollectionItemPath(FOLDER, "posts", "hello"));
+    const menu = await fs.readJson(path.join(getProjectMenusDir(FOLDER), "main.json"));
+    assert.notEqual(seeded.uuid, "PRESET-UUID"); // uuid regenerated on seed
+    assert.equal(menu.items[0].collectionItemUuid, seeded.uuid); // menu ref remapped to it
   });
 });

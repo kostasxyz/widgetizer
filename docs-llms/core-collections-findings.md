@@ -446,7 +446,7 @@ Suggested fix: either document/reject `menu` fields for collection schemas in v1
 or resolve schema-declared `menu` settings before item template render using the
 same menu-map/page-link/depth-prefix logic as widget rendering.
 
-### 11. Menu editor cannot select collection item pages as stable targets
+### 11. Menu editor cannot select collection item pages as stable targets — ✅ Resolved (2026-06-07)
 
 Simple: collection item pages can exist, but menu authors cannot pick them from
 the menu editor's page selector.
@@ -478,6 +478,35 @@ Suggested fix: extend the menu target picker to include `hasItemPages`
 collection items, and decide whether to add stable item references
 (`collectionType` + item `uuid`) that resolve to the current item slug at render
 time.
+
+**Resolution:** Full stable-reference path — collection item pages are now
+first-class menu targets with the same rename-following and cleanup guarantees
+pages have. A menu item gains optional `collectionType` + `collectionItemUuid`
+fields (mirroring `pageUuid`). **Picker:** `MenuEditor/index.jsx` lists
+`hasItemPages` collection items alongside pages, grouped by collection in
+`MenuCombobox.jsx`; selecting one stores the stable ref (`SortableItem.jsx`)
+instead of a hand-typed URL. **Render:** `resolveMenuItemLinks`
+(`renderingService.js`) resolves `collectionItemUuid` via a cached
+`collectionItemsByUuid` map (new `loadCollectionItemsByUuid`, built lazily only
+when a widget has menu settings) to the item's current
+`${slugPrefix}/${slug}.html` — depth-prefixed, with `canonicalPath` for
+active-state — and clears the link if the item is gone, exactly like the
+deleted-page branch. **Delete:** new `cleanupDeletedCollectionItemReferences`
+(`linkEnrichment.js`) scrubs menu refs to a deleted item; `collectionController`
+`deleteItem`/`bulkDeleteItems` capture the uuid(s) before deletion and call it
+(render-time clearing is the backstop). **Duplication:**
+`remapDuplicatedProjectUuids` was restructured to regenerate item uuids first
+(building an old→new item-uuid map) so the menu pass remaps `collectionItemUuid`
+alongside `pageUuid`; duplicated projects keep their item links. **Preset seeding**
+also regenerates item uuids, so `seedPresetCollections` builds an old→new map and
+calls `remapCollectionItemMenuRefs` to repoint preset menu refs at the freshly
+seeded items (review fix — earlier assumption that creation preserved uuids was
+wrong). Delete uuid-capture is best-effort (try/catch) so a corrupt item never
+blocks its own deletion. The menu save path is unchanged (`sanitizeMenuItems`
+spreads `...item`, so the new fields persist).
+Tests: `linkMenuPrefixing.test.js` (resolve at root/depth + clear-if-missing) and
+`collectionLinkEnrichment.test.js` (delete cleanup + duplication remap); lint, 88
+targeted backend tests, and a production build pass.
 
 ### 12. Collection item SEO is not at parity with page SEO
 

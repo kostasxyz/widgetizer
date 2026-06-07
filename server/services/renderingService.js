@@ -29,6 +29,7 @@ import { registerSafeUrlFilter } from "../../src/core/filters/safeUrlFilter.js";
 import { sanitizeHref } from "../../src/core/utils/urlSafety.js";
 import {
   listCollectionItems,
+  listCollectionSchemas,
   getCollectionSchema,
   prepareCollectionItemForRender,
 } from "./collectionService.js";
@@ -217,7 +218,7 @@ function resolveWidgetPageLinks(widgetData, pagesByUuid, outputPathPrefix = "") 
  * @param {Map} pagesByUuid - Map of uuid -> page data
  * @returns {Array} Menu items with resolved links
  */
-function resolveMenuItemLinks(menuItems, pagesByUuid, outputPathPrefix = "") {
+function resolveMenuItemLinks(menuItems, pagesByUuid, outputPathPrefix = "", collectionItemsByUuid = new Map()) {
   if (!menuItems || !Array.isArray(menuItems)) {
     return menuItems;
   }
@@ -228,8 +229,23 @@ function resolveMenuItemLinks(menuItems, pagesByUuid, outputPathPrefix = "") {
     // Resolve the href for this item, computing both the emitted (depth-aware,
     // prefixed) `link` and the un-prefixed `canonicalPath` used for active-state
     // matching. Every item is processed — including custom URLs — so links work
-    // from any output depth, not just pageUuid-resolved ones.
-    if (item.pageUuid) {
+    // from any output depth, not just resolved ones.
+    if (item.collectionItemUuid) {
+      // Stable reference to a collection item page (#11): resolve its current
+      // slug, mirroring pageUuid so renames follow and deletes clear the link.
+      const entry = collectionItemsByUuid && collectionItemsByUuid.get(item.collectionItemUuid);
+      if (entry) {
+        const href = `${entry.slugPrefix}/${entry.slug}.html`;
+        resolved.link = prefixInternalHref(href, outputPathPrefix);
+        resolved.canonicalPath = normalize(href);
+      } else {
+        // Collection item was deleted - clear the link
+        resolved.link = "";
+        resolved.canonicalPath = "";
+        delete resolved.collectionItemUuid;
+        delete resolved.collectionType;
+      }
+    } else if (item.pageUuid) {
       const page = pagesByUuid && pagesByUuid.get(item.pageUuid);
       if (page) {
         const href = `${page.slug}.html`;
@@ -249,15 +265,15 @@ function resolveMenuItemLinks(menuItems, pagesByUuid, outputPathPrefix = "") {
     }
 
     // Block dangerous protocols in author-entered custom links (parity with
-    // setting-type "link" fields). pageUuid links resolve to internal slugs and
-    // are unaffected; this catches javascript:/data:/vbscript: in custom URLs.
+    // setting-type "link" fields). Resolved internal slugs are unaffected;
+    // this catches javascript:/data:/vbscript: in custom URLs.
     if (typeof resolved.link === "string") {
       resolved.link = sanitizeHref(resolved.link);
     }
 
     // Recursively resolve children
     if (item.items && Array.isArray(item.items) && item.items.length > 0) {
-      resolved.items = resolveMenuItemLinks(item.items, pagesByUuid, outputPathPrefix);
+      resolved.items = resolveMenuItemLinks(item.items, pagesByUuid, outputPathPrefix, collectionItemsByUuid);
     }
 
     return resolved;
@@ -270,14 +286,14 @@ function resolveMenuItemLinks(menuItems, pagesByUuid, outputPathPrefix = "") {
  * @param {Map} pagesByUuid - Map of uuid -> page data
  * @returns {object} Menu data with resolved links
  */
-function resolveMenuPageLinks(menuData, pagesByUuid, outputPathPrefix = "") {
+function resolveMenuPageLinks(menuData, pagesByUuid, outputPathPrefix = "", collectionItemsByUuid = new Map()) {
   if (!menuData || !menuData.items) {
     return menuData;
   }
 
   return {
     ...menuData,
-    items: resolveMenuItemLinks(menuData.items, pagesByUuid, outputPathPrefix),
+    items: resolveMenuItemLinks(menuData.items, pagesByUuid, outputPathPrefix, collectionItemsByUuid),
   };
 }
 
@@ -301,6 +317,30 @@ async function loadPagesByUuid(projectFolderName) {
     console.warn(`Could not load pages for link resolution: ${error.message}`);
     return new Map();
   }
+}
+
+/**
+ * Load every `hasItemPages` collection item and return a map of
+ * item uuid -> { slugPrefix, slug }, for resolving stable collection-item menu
+ * references (#11) to their current page URL. Cached per render in sharedGlobals.
+ * @param {string} projectFolderName - The project folder name
+ * @returns {Promise<Map>} Map of uuid -> { slugPrefix, slug }
+ */
+async function loadCollectionItemsByUuid(projectFolderName) {
+  const map = new Map();
+  try {
+    const schemas = await listCollectionSchemas(projectFolderName);
+    for (const schema of schemas) {
+      if (!schema.hasItemPages) continue;
+      const items = await listCollectionItems(projectFolderName, schema.type);
+      for (const item of items) {
+        if (item.uuid) map.set(item.uuid, { slugPrefix: schema.slugPrefix, slug: item.slug });
+      }
+    }
+  } catch (error) {
+    console.warn(`Could not load collection items for menu resolution: ${error.message}`);
+  }
+  return map;
 }
 
 /**
@@ -739,6 +779,20 @@ async function renderWidget(
       }
     }
 
+    // Collection item pages used as stable menu targets (#11) resolve to their
+    // current slug the same way pageUuid does. Built only when this widget has
+    // menu settings, and cached across widgets in sharedGlobals.
+    const hasMenuSettings = menuSettingIds.size > 0 || Object.keys(blockMenuSettingIds).length > 0;
+    let collectionItemsByUuid = new Map();
+    if (hasMenuSettings) {
+      if (sharedGlobals && sharedGlobals.collectionItemsByUuid) {
+        collectionItemsByUuid = sharedGlobals.collectionItemsByUuid;
+      } else {
+        collectionItemsByUuid = await loadCollectionItemsByUuid(projectFolderName);
+        if (sharedGlobals) sharedGlobals.collectionItemsByUuid = collectionItemsByUuid;
+      }
+    }
+
     // Resolve menu-type settings: try UUID first, fall back to slug-based ID
     for (const [key, value] of Object.entries(enhancedSettings)) {
       if (menuSettingIds.has(key)) {
@@ -746,7 +800,7 @@ async function renderWidget(
           if (value) {
             const menuData = menuMaps.byUuid.get(value) || menuMaps.bySlug.get(value);
             // Resolve page links in menu items (pageUuid -> current slug)
-            enhancedSettings[key] = resolveMenuPageLinks(menuData, pagesByUuid, outputPathPrefix) || { items: [] };
+            enhancedSettings[key] = resolveMenuPageLinks(menuData, pagesByUuid, outputPathPrefix, collectionItemsByUuid) || { items: [] };
           } else {
             enhancedSettings[key] = { items: [] }; // Ensure empty menu if no value set
           }
@@ -766,7 +820,7 @@ async function renderWidget(
         try {
           if (value) {
             const menuData = menuMaps.byUuid.get(value) || menuMaps.bySlug.get(value);
-            block.settings[settingId] = resolveMenuPageLinks(menuData, pagesByUuid, outputPathPrefix) || { items: [] };
+            block.settings[settingId] = resolveMenuPageLinks(menuData, pagesByUuid, outputPathPrefix, collectionItemsByUuid) || { items: [] };
           } else {
             block.settings[settingId] = { items: [] };
           }

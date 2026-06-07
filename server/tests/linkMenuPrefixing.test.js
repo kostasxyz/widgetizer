@@ -104,6 +104,32 @@ describe("resolveMenuItemLinks — link prefixing + canonicalPath", () => {
     assert.equal(item.canonicalPath, "");
     assert.equal("pageUuid" in item, false);
   });
+
+  it("collectionItemUuid item: resolves to the item's page URL (root + depth) (#11)", () => {
+    const itemsByUuid = new Map([["uuid-room-1", { slugPrefix: "rooms", slug: "suite-caldera" }]]);
+    const mk = () => [{ collectionItemUuid: "uuid-room-1", collectionType: "accommodation", label: "Suite" }];
+
+    const [root] = resolveMenuItemLinks(mk(), pagesByUuid, "", itemsByUuid);
+    assert.equal(root.link, "rooms/suite-caldera.html");
+    assert.equal(root.canonicalPath, "rooms/suite-caldera.html");
+
+    const [deep] = resolveMenuItemLinks(mk(), pagesByUuid, "../", itemsByUuid);
+    assert.equal(deep.link, "../rooms/suite-caldera.html");
+    assert.equal(deep.canonicalPath, "rooms/suite-caldera.html");
+  });
+
+  it("deleted collection-item ref: link/canonicalPath cleared, stable fields dropped (#11)", () => {
+    const [item] = resolveMenuItemLinks(
+      [{ collectionItemUuid: "gone", collectionType: "accommodation", label: "X" }],
+      pagesByUuid,
+      "../",
+      new Map(),
+    );
+    assert.equal(item.link, "");
+    assert.equal(item.canonicalPath, "");
+    assert.equal("collectionItemUuid" in item, false);
+    assert.equal("collectionType" in item, false);
+  });
 });
 
 describe("resolveMenuPageLinks", () => {

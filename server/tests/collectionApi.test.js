@@ -299,6 +299,22 @@ describe("update / delete / duplicate / reorder", () => {
     assert.equal(missing._status, 404);
   });
 
+  it("deletes a corrupt item without blocking (best-effort uuid capture)", async () => {
+    await call(collectionController.createItem, {
+      params: { collectionType: "portfolio" },
+      body: { slug: "broken", settings: { title: "Broken" } },
+    });
+    // Corrupt the file so the pre-delete uuid read (readRawCollectionItem) throws.
+    const itemPath = path.join(getProjectDir(PROJECT_FOLDER), "collections", "portfolio", "broken.json");
+    await fs.writeFile(itemPath, "{ not valid json");
+
+    const res = await call(collectionController.deleteItem, {
+      params: { collectionType: "portfolio", itemSlug: "broken" },
+    });
+    assert.equal(res._status, 200);
+    assert.equal(await fs.pathExists(itemPath), false);
+  });
+
   it("bulk-deletes: 200 full success, 207 partial", async () => {
     await call(collectionController.createItem, {
       params: { collectionType: "portfolio" },

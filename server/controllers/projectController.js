@@ -26,7 +26,11 @@ import { writeJsonAtomic } from "../utils/atomicFs.js";
 import { generateUniqueSlug } from "../utils/slugHelpers.js";
 
 import { generateCopyName } from "../utils/namingHelpers.js";
-import { enrichNewProjectReferences, remapDuplicatedProjectUuids } from "../utils/linkEnrichment.js";
+import {
+  enrichNewProjectReferences,
+  remapDuplicatedProjectUuids,
+  remapCollectionItemMenuRefs,
+} from "../utils/linkEnrichment.js";
 import { processTemplatesRecursive } from "../utils/templateHelpers.js";
 
 import multer from "multer";
@@ -49,6 +53,8 @@ async function ensureDirectories() {
 export async function seedPresetCollections(folderName, presetCollectionsDir) {
   const knownTypes = new Set((await listCollectionSchemas(folderName)).map((s) => s.type));
   const typeEntries = await fs.readdir(presetCollectionsDir, { withFileTypes: true });
+  // Source preset uuid -> freshly seeded uuid, so preset menu refs remap (#11).
+  const oldToNewItemUuid = new Map();
 
   for (const typeEntry of typeEntries) {
     if (!typeEntry.isDirectory()) continue;
@@ -70,7 +76,9 @@ export async function seedPresetCollections(folderName, presetCollectionsDir) {
       const slug = name.replace(/\.json$/, "");
       const raw = await fs.readJSON(path.join(srcTypeDir, name));
       const now = new Date().toISOString();
-      const seeded = { ...raw, id: slug, slug, uuid: randomUUID(), created: now, updated: now };
+      const newUuid = randomUUID();
+      if (raw.uuid) oldToNewItemUuid.set(raw.uuid, newUuid);
+      const seeded = { ...raw, id: slug, slug, uuid: newUuid, created: now, updated: now };
       await writeJsonAtomic(getProjectCollectionItemPath(folderName, type, slug), seeded);
     }
 
@@ -80,6 +88,10 @@ export async function seedPresetCollections(folderName, presetCollectionsDir) {
       await fs.copy(orderSrc, getProjectCollectionOrderPath(folderName, type));
     }
   }
+
+  // Preset menus may ship stable collection-item references against the preset's
+  // source uuids; remap them to the freshly seeded uuids so the links resolve (#11).
+  await remapCollectionItemMenuRefs(folderName, oldToNewItemUuid);
 }
 
 /**
