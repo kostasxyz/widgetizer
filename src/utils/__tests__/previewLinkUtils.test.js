@@ -11,6 +11,13 @@ describe("getStandalonePreviewTarget", () => {
     expect(getStandalonePreviewTarget("/preview/services")).toBe("/preview/services");
   });
 
+  it("returns a collection item route for nested item html links", () => {
+    expect(getStandalonePreviewTarget("rooms/suite-caldera.html")).toBe("/preview/collection/rooms/suite-caldera");
+    expect(getStandalonePreviewTarget("/excursions/sunset-cruise.html?ref=card")).toBe(
+      "/preview/collection/excursions/sunset-cruise",
+    );
+  });
+
   it("blocks hash links", () => {
     expect(getStandalonePreviewTarget("#features")).toBeNull();
     expect(getStandalonePreviewTarget("  #pricing")).toBeNull();
@@ -28,6 +35,7 @@ describe("getStandalonePreviewTarget", () => {
   it("blocks unsupported internal paths", () => {
     expect(getStandalonePreviewTarget("/")).toBeNull();
     expect(getStandalonePreviewTarget("/foo/bar")).toBeNull();
+    expect(getStandalonePreviewTarget("a/b/c.html")).toBeNull();
   });
 });
 
@@ -35,12 +43,16 @@ describe("isStandalonePreviewNavigationUrl", () => {
   it("allows only internal preview routes", () => {
     expect(isStandalonePreviewNavigationUrl("/preview/about")).toBe(true);
     expect(isStandalonePreviewNavigationUrl("/preview/case-study")).toBe(true);
+    expect(isStandalonePreviewNavigationUrl("/preview/collection/rooms/suite-caldera")).toBe(true);
   });
 
   it("rejects non-preview targets", () => {
     expect(isStandalonePreviewNavigationUrl("/")).toBe(false);
     expect(isStandalonePreviewNavigationUrl("/about")).toBe(false);
     expect(isStandalonePreviewNavigationUrl("/preview/about?x=1")).toBe(false);
+    expect(isStandalonePreviewNavigationUrl("/preview/collection/rooms/suite-caldera?x=1")).toBe(false);
+    expect(isStandalonePreviewNavigationUrl("/preview/collection/rooms")).toBe(false);
+    expect(isStandalonePreviewNavigationUrl("/preview/collection/a/b/c")).toBe(false);
     expect(isStandalonePreviewNavigationUrl("https://example.com")).toBe(false);
     expect(isStandalonePreviewNavigationUrl(null)).toBe(false);
   });

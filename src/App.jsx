@@ -18,7 +18,9 @@ import Themes from "./pages/Themes";
 import ExportSite from "./pages/ExportSite";
 import AppSettings from "./pages/AppSettings";
 import PageEditor from "./pages/PageEditor";
+import SitePreviewLayout from "./pages/SitePreviewLayout";
 import PagePreview from "./pages/PagePreview";
+import CollectionItemPagePreview from "./pages/CollectionItemPagePreview";
 import HomeRedirect from "./pages/HomeRedirect";
 import ProjectsAdd from "./pages/ProjectsAdd";
 import ProjectsEdit from "./pages/ProjectsEdit";
@@ -146,9 +148,19 @@ const router = createBrowserRouter(
       ],
     },
     {
-      path: "/preview/:pageId",
-      element: <PagePreview />,
+      path: "/preview",
+      element: <SitePreviewLayout />,
       errorElement: <RouteError />,
+      children: [
+        {
+          path: ":pageId",
+          element: <PagePreview />,
+        },
+        {
+          path: "collection/:prefix/:slug",
+          element: <CollectionItemPagePreview />,
+        },
+      ],
     },
     {
       path: "*",

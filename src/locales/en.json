@@ -724,7 +724,8 @@
   "pagePreview": {
     "title": "Preview: {{name}}",
     "loading": "Loading page...",
-    "backToEditor": "Back"
+    "backToEditor": "Back",
+    "notFound": "This preview could not be loaded."
   },
   "appSettings": {
     "tabs": {

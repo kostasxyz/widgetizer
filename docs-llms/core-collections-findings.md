@@ -232,7 +232,7 @@ export already used the folder name. Test: `preview.test.js` render test asserts
 a `pageUuid` link resolves to the page slug (`about.html`) — confirmed it renders
 `href=""` with the fix reverted, so the test genuinely guards the regression.
 
-### 7. Standalone site preview cannot navigate to collection item pages
+### 7. Standalone site preview cannot navigate to collection item pages — ✅ Resolved (2026-06-07)
 
 Simple: collection item URLs are nested, but preview navigation only understands
 root-level `.html` links.
@@ -256,6 +256,43 @@ generates.
 Suggested fix: extend preview link routing to support nested item paths, e.g.
 `/preview/collection/:type/:slug` or another route that can render item preview
 from a URL path.
+
+**Resolution:** Frontend-only; no server changes were needed. The link router was
+widened in both copies — the testable mirror `src/utils/previewLinkUtils.js` and the
+iframe-served twin `src/utils/previewRuntime.js` (served raw from `STATIC_UTILS_DIR`,
+so it cannot import the bundle) — so a nested `slugPrefix/slug.html` link resolves to
+a new `/preview/collection/:prefix/:slug` route, and `isStandalonePreviewNavigationUrl`
+now accepts that shape (still rejecting query/hash). New route component
+`src/pages/CollectionItemPagePreview.jsx` (registered in `src/App.jsx`) resolves the
+URL `slugPrefix` → collection type via the existing `useCollections()` hook (only
+`hasItemPages` collections qualify), loads the saved item with `getCollectionItem`,
+and renders it through the existing `previewCollectionItem` → `/render/:token` flow —
+the same path the editor "eye" preview uses. No backend change was required because
+that token HTML already injects the standalone navigation runtime
+(`previewController.js` `injectRuntimeScript(html, "standalone")`), and the injected
+link guard calls `preventDefault()` without `stopPropagation()`, so the runtime's
+capture-phase handler still posts `NAVIGATE_PREVIEW`. A shared `NAVIGATE_PREVIEW`
+listener drives navigation, so item→item and item→page both work; an unknown prefix, a
+non-`hasItemPages` collection, or a missing item shows a clean not-found state. Tests:
+`previewLinkUtils.test.js` gained nested-item cases for both helpers (the finding
+flagged these as absent) — 8 cases pass. Routing the live runtime and the tested mirror
+through one shared module remains a deliberate non-goal (the runtime is served raw to
+the iframe); the two `getStandalonePreviewTarget` copies now carry cross-reference
+comments to keep them in sync.
+
+**Follow-up (unified preview shell, 2026-06-07):** The two standalone preview routes
+were unified under a shared parent layout `src/pages/SitePreviewLayout.jsx` (route
+`/preview`) that owns the toolbar, device toggle, the single iframe stage (loader +
+sandbox + responsive sizing), and the `NAVIGATE_PREVIEW` listener. `PagePreview.jsx`
+and `CollectionItemPagePreview.jsx` are now thin child routes (`:pageId` and
+`collection/:prefix/:slug`) that only resolve a render token and report it up via the
+outlet context. Because the toolbar and stage persist across navigation, page↔item no
+longer remounts the chrome (no flash, one consistent loader, identical full-bleed look,
+and the item iframe now gets the same `sandbox` as pages). The standalone page preview
+no longer renders through `PreviewPanel` — it fetches a standalone token via
+`fetchPreviewToken(..., "standalone")` and feeds the shared stage; `PreviewPanel`
+remains the page **editor**'s live preview, and the item-editor "eye" modal
+(`CollectionItemPreview`) is unchanged.
 
 ### 8. Archived schema fields are preserved but not exposed to users
 

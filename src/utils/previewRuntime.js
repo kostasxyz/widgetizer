@@ -24,6 +24,8 @@ function getPreviewMode() {
 
 const PREVIEW_MODE = getPreviewMode();
 
+// Keep in sync with the twin in src/utils/previewLinkUtils.js. This copy is served
+// raw to the iframe (/runtime/previewRuntime.js) and cannot import the bundled one.
 function getStandalonePreviewTarget(href) {
   if (!href || typeof href !== "string") return null;
   const trimmed = href.trim();
@@ -50,6 +52,13 @@ function getStandalonePreviewTarget(href) {
   const htmlMatch = withoutQuery.match(/^\/?([^/]+)\.html$/);
   if (htmlMatch) {
     return `/preview/${htmlMatch[1]}`;
+  }
+
+  // Nested collection item URLs (e.g. "rooms/suite-caldera.html") route to the
+  // item preview keyed by slugPrefix; the route resolves prefix -> type.
+  const itemMatch = withoutQuery.match(/^\/?([^/]+)\/([^/]+)\.html$/);
+  if (itemMatch) {
+    return `/preview/collection/${itemMatch[1]}/${itemMatch[2]}`;
   }
 
   return null;
