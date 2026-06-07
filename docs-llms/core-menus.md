@@ -55,18 +55,19 @@ A typical menu JSON file (`main-menu.json`) has the following structure:
 - `label`: The display text shown in the navigation.
 - `link`: The URL or page filename (e.g., `about.html` for internal pages, or a full URL for external links).
 - `pageUuid` (optional): For internal page links, stores the page's stable UUID. This ensures the link remains valid even if the page is renamed.
+- `collectionType` + `collectionItemUuid` (optional): For links to a collection **item page** (a `hasItemPages` collection), the collection type plus the item's stable UUID — the collection-item equivalent of `pageUuid` (Finding #11). They resolve to the item's current `{slugPrefix}/{slug}.html`, survive item renames, and clear on item deletion.
 
-**Link Resolution & pageUuid Lifecycle:**
+**Link Resolution & stable-reference lifecycle** (`pageUuid` for pages, `collectionItemUuid` for collection item pages — same lifecycle):
 
 1. **Project Creation**: When a project is created from a theme, all menu items linking to internal pages are automatically enriched with `pageUuid` based on matching page slugs.
 
-2. **User Selection**: When users select an internal page in the menu editor, both `link` and `pageUuid` are stored.
+2. **User Selection**: When users select an internal page in the menu editor, both `link` and `pageUuid` are stored. Picking a collection item instead stores `collectionType` + `collectionItemUuid`.
 
-3. **Rendering/Export**: The rendering service resolves each item's `pageUuid` to the current page slug, ensuring links stay up-to-date even after page renames.
+3. **Rendering/Export**: The menu resolver (`server/services/menuResolver.js`) resolves each item's `pageUuid` (or `collectionItemUuid`) to the current page/item slug, ensuring links stay up-to-date even after renames.
 
-4. **Page Deletion Cleanup**: When a page is deleted, all menu items referencing its `pageUuid` are automatically cleaned up — the `link` is set to empty and `pageUuid` is removed from the JSON file.
+4. **Deletion Cleanup**: When a page is deleted, menu items referencing its `pageUuid` are cleaned up (`link` emptied, `pageUuid` removed). Collection-item deletion does the same for `collectionItemUuid` refs via `cleanupDeletedCollectionItemReferences`.
 
-5. **Project Cloning**: When a project is cloned, all page UUIDs are regenerated, and all menu item `pageUuid` references are updated to point to the new UUIDs.
+5. **Project Cloning**: When a project is cloned, all page **and** collection-item UUIDs are regenerated, and menu `pageUuid` / `collectionItemUuid` references are remapped to the new UUIDs.
 
 ## 2. Frontend Implementation
 

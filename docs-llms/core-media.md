@@ -141,7 +141,7 @@ The media library automatically tracks which pages and global widgets are using 
 
 #### Collection item usage
 
-Collection items reference media through `image`, `file`, and `link` settings just like pages. Their usage source string is `collection:{collectionType}/{itemSlug}` (e.g. `collection:portfolio/project-alpha`) — no new `{ contextType, contextId }` shape; the repository contract is unchanged. See [Collections](core-collections.md) for the content model.
+Collection items reference media through `image`, `file`, and `link` settings just like pages — plus their SEO social image (`seo.og_image`), which `extractMediaPathsFromCollectionItem` also tracks (Finding #12). Their usage source string is `collection:{collectionType}/{itemSlug}` (e.g. `collection:portfolio/project-alpha`) — no new `{ contextType, contextId }` shape; the repository contract is unchanged. See [Collections](core-collections.md) for the content model.
 
 - `mediaUsageService.js` adds `extractMediaPathsFromCollectionItem`, `updateCollectionItemMediaUsage`, `removeCollectionItemFromMediaUsage`, and `syncCollectionItemMediaUsageOnWrite` (the last handles renames: remove the old source, add the new).
 - `refreshAllMediaUsage` also scans `data/projects/{folder}/collections/*/*.json` (excluding `_order.json`), so the existing structural-refresh hooks (project creation/duplication/import, theme-update apply) pick up collection media with **no** new refresh call sites.

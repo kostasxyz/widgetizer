@@ -18,7 +18,7 @@ The `PageEditor` is composed of several specialized child components, each with 
   - Adding, duplicating, and deleting widgets.
   - Adding blocks to a widget.
 
-- **`PreviewPanel`**: The central panel that renders a live, interactive preview of the page. It has been refactored to work declaratively. Instead of being told _how_ to change, it simply receives the latest application state from the editor and uses a central `updatePreview` function to synchronize the `<iframe>`'s DOM. In editor mode, link navigation is intercepted to avoid leaving the editor while still allowing widget/block selection. In standalone preview mode, internal `.html` links route to `/preview/:slug`, while external links remain disabled.
+- **`PreviewPanel`**: The central panel that renders a live, interactive preview of the page. It has been refactored to work declaratively. Instead of being told _how_ to change, it simply receives the latest application state from the editor and uses a central `updatePreview` function to synchronize the `<iframe>`'s DOM. In editor mode, link navigation is intercepted to avoid leaving the editor while still allowing widget/block selection. (`PreviewPanel` is the **editor's** live preview only; the standalone full-page preview is its own shell, `SitePreviewLayout` — see "Live Preview" below.)
 
 - **`SettingsPanel`**: The right-hand panel. When a widget or block is selected, this panel dynamically displays the relevant configuration options based on its schema. All changes made here are immediately applied to the selected component and reflected in the preview. Schema labels that use `tTheme:` prefixed keys are resolved at render time through the `useThemeLocale` hook's `tTheme()` function.
 
@@ -85,10 +85,9 @@ The editor provides a way to see a true, live preview of the page, exactly as an
 1.  The user clicks the **Preview** button in the `EditorTopBar`.
 2.  In the web app, this opens or reuses a named browser tab at the `/preview/:pageId` URL.
 3.  In Electron, the toolbar uses IPC to open or reuse a dedicated `BrowserWindow` for preview, maximizing and focusing that window on subsequent opens.
-4.  This route is handled by the `PagePreview` component, which is separate from the main editor layout.
-5.  `PagePreview` fetches the page data and its corresponding server-rendered HTML.
-6.  The raw HTML is then displayed within an `<iframe>`, providing an accurate representation of the final published page.
-7.  Internal `.html` links in the preview navigate to other `/preview/:slug` pages, while external links remain disabled.
+4.  `/preview` is a shared shell, `SitePreviewLayout`, that owns the toolbar, device toggle, the single `<iframe>` stage, and the cross-page navigation listener. `PagePreview` (`:pageId`) is a thin child route under it; collection item pages get a sibling child route, `CollectionItemPagePreview` (`collection/:prefix/:slug`).
+5.  Each child route resolves a render token and hands it to the shared stage, which points the `<iframe>` at the server-rendered HTML — an accurate representation of the final published page. `PagePreview` fetches a standalone page token via `fetchPreviewToken(..., "standalone")`; `CollectionItemPagePreview` posts the item to `previewCollectionItem` (`POST /api/preview/collection`) for its token.
+6.  Internal `.html` links navigate to other pages (and to collection item pages) within the same persistent shell, so the toolbar/stage never remount; external links remain disabled.
 
 ### Saving Changes
 

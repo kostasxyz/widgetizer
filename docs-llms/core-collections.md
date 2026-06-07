@@ -220,8 +220,11 @@ The service owns all filesystem/schema logic so Liquid, export, and HTTP handler
 | `buildCollectionItemData` | Apply defaults, preserve `created`/`uuid`, generate/sanitize slug, enforce required, set monotonic `updated`, merge back archived keys |
 | `writeCollectionItem` / `deleteCollectionItem` / `bulkDeleteCollectionItems` / `duplicateCollectionItem` / `reorderCollectionItems` | Atomic, slug-safe writes with `_order.json` + media-usage sync |
 | `resolveCollectionItemLinks` | Link resolution (`pageUuid` → slug + depth prefixing) — see §6 |
-| `prepareCollectionItemForRender` | Render gate: clone, resolve links, then sanitize item settings (richtext/link). **Every** item render path goes through this, not bare `resolveCollectionItemLinks` |
+| `prepareCollectionItemForRender` | Render gate: clone, resolve links, resolve `menu`-type settings (when given `menuDeps`, §6/Finding #10), then sanitize item settings (richtext/link). **Every** item render path goes through this, not bare `resolveCollectionItemLinks` |
 | `buildCollectionItemPageData` | Build the page-shaped object for the layout/SeoTag during export — see §8 |
+| `shapeItemSeo` | Build the page-shaped item `seo` object (defaults + optional HTML-strip), shared by the save/normalize/render paths (Finding #12) |
+| `loadCollectionItemsByUuid` | Map every `hasItemPages` item `uuid → { slugPrefix, slug }`, for resolving collection-item menu targets (Finding #11) |
+| `discardArchivedCollectionItem` | Explicitly remove on-disk orphaned (out-of-schema) setting keys on a confirmed user action (Finding #8) |
 | `CollectionSlugConflictError` / `CollectionValidationError` | Typed errors the controller maps to 409/400 |
 
 Slug helpers come from `server/utils/slugHelpers.js`; the service does not duplicate slug rules.
@@ -312,7 +315,7 @@ Item shape: `{ id, uuid, slug, url, created, updated, settings }`. `url` is comp
 Implementation:
 
 - `src/core/filters/collectionFilter.js` exports `registerCollectionFilter(engine)` (and `normalizeCollectionFilterArgs`), registered in `configureLiquidEngine()`. It lives under `src/core/`, so it imports **no** backend module — it reads `projectId`, `renderMode`, `outputPathPrefix`, and a `getCollectionItems` loader off `this.context.globals`.
-- `createBaseRenderContext` attaches the `getCollectionItems` loader once per render. The loader calls `collectionService.listCollectionItems`, applies `prepareCollectionItemForRender` per item (resolves `pageUuid` links **and** sanitizes richtext/link settings — sanitize-after-resolve), computes `item.url`, and caches results per `(type, options)` in a per-render `globals.collectionCache` Map. The cache is **per-render** (not global) because `outputPathPrefix` differs between root pages and item pages.
+- `createBaseRenderContext` attaches the `getCollectionItems` loader once per render. The loader calls `collectionService.listCollectionItems`, applies `prepareCollectionItemForRender` per item (resolves `pageUuid` links, resolves any schema-declared `menu` settings to full menu objects when the collection declares one — lazily loading `menuDeps`, #10 — **and** sanitizes richtext/link settings — sanitize-after-resolve), computes `item.url`, and caches results per `(type, options)` in a per-render `globals.collectionCache` Map. The cache is **per-render** (not global) because `outputPathPrefix` differs between root pages and item pages.
 - Supported options: `limit`, `sort`, `offset`.
 - **`invalid: true` items are excluded by default** (matching export's refusal to publish them); developer mode logs the skipped type/slug values. There is no `includeInvalid` option in v1.
 
@@ -345,7 +348,7 @@ The full export wiring (two-pass validation, subdirectory creation, per-item `sh
 | `src/hooks/useCollectionItems.js` | `{ items, loading, error, refetch }` for one type |
 | `src/pages/CollectionItems.jsx` | Listing table (search, multi-select bulk delete, row actions, drag-reorder when `sortable`, "Needs attention" filter for invalid items) |
 | `src/pages/CollectionItemAdd.jsx` / `CollectionItemEdit.jsx` | Add/edit routes; edit re-routes with `navigate(newPath, { replace: true })` on slug change |
-| `src/components/collections/CollectionItemForm.jsx` | Shared schema-driven form: `react-hook-form`, renders fields via `SettingsRenderer`, `useGuardedFormPage(isDirty)`, slug auto-generated from the `usedAsTitle` field, inline required-field validation, invalid items load with `validationErrors` pre-populated; the `usedAsTitle` field renders in a floating bar with an icon-only **Preview** (eye) button when the type has item pages |
+| `src/components/collections/CollectionItemForm.jsx` | Shared schema-driven form: `react-hook-form`, renders fields via `SettingsRenderer`, `useGuardedFormPage(isDirty)`, slug auto-generated from the `usedAsTitle` field, inline required-field validation, invalid items load with `validationErrors` pre-populated; the `usedAsTitle` field renders in a floating bar with an icon-only **Preview** (eye) button when the type has item pages; a collapsible **SEO** section (shared `SeoFields`, parity with `PageForm`) shows for `hasItemPages` types (Finding #12); a **"Leftover content"** notice with a confirmed discard surfaces any archived fields (Finding #8) |
 | `src/components/collections/CollectionItemPreview.jsx` | Full-screen, page-editor-style item preview overlay (back button, item dropdown, desktop/mobile toggle); renders the selected item — including the live unsaved draft — through the theme template in an iframe |
 
 Routes are registered in `src/App.jsx` (`collections/:collectionType`, `.../add`, `.../:itemSlug/edit`). The sidebar (`src/components/layout/Sidebar.jsx`) calls `useCollections()` and renders one nav entry per type after Pages/Menus, with a numeric item-count badge (shown even at `0`) and a Lucide icon resolved from the schema `icon` string (fallback `Database`); the label adapter accepts a pre-resolved `label` alongside the existing `labelKey`.
@@ -390,7 +393,7 @@ Deferred, with the v1 data model already forward-compatible:
 
 ## Tests
 
-Backend coverage lives in `server/tests/`: `collections.test.js`, `collectionApi.test.js`, `collectionItems.test.js`, `collectionFilter.test.js`, `collectionItemExport.test.js`, `collectionItemPageData.test.js`, `collectionLinkEnrichment.test.js`, `collectionMediaUsage.test.js`, `collectionPresetSeeding.test.js` — covering schema validation, CRUD + slug/UUID invariants, atomic-write crash recovery, the Liquid filter, depth-aware export, the page-shaped object, link enrichment, media usage, and preset seeding. Item-preview guard paths (missing `collectionType`, template-less collection) are covered in `preview.test.js`.
+Backend coverage lives in `server/tests/`: `collections.test.js`, `collectionApi.test.js`, `collectionItems.test.js`, `collectionFilter.test.js`, `collectionItemExport.test.js`, `collectionItemPageData.test.js`, `collectionLinkEnrichment.test.js`, `collectionMediaUsage.test.js`, `collectionPresetSeeding.test.js`, `menuResolver.test.js` — covering schema validation, CRUD + slug/UUID invariants, atomic-write crash recovery, the Liquid filter, depth-aware export, the page-shaped object, link enrichment, media usage, and preset seeding. Item-preview guard paths (missing `collectionType`, template-less collection) are covered in `preview.test.js`.
 
 ---
 

@@ -512,6 +512,7 @@ Each menu has a stable `uuid` that never changes, even when the menu is renamed.
 3. **Rendering/Export**: The system resolves the UUID to the current menu data. If a menu was renamed, the reference still works because the UUID is unchanged.
 4. **Project Cloning**: When a project is cloned, all menu UUIDs are regenerated and widget references are updated to point to the new UUIDs.
 5. **Backward Compatibility**: Legacy slug-based references (e.g., `"main-menu"`) are resolved via slug fallback at render time and converted to UUIDs on first interaction in the editor.
+6. **Collection item templates**: A `menu` setting resolves to the same full menu object in collection item templates as in widgets (Finding #10) — the template receives `{ items: [...] }` (depth-aware `link` + `canonicalPath`), not a raw UUID.
 
 ### Link
 
