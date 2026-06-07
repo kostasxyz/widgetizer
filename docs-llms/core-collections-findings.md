@@ -320,7 +320,7 @@ no longer renders through `PreviewPanel` — it fetches a standalone token via
 remains the page **editor**'s live preview, and the item-editor "eye" modal
 (`CollectionItemPreview`) is unchanged.
 
-### 8. Archived schema fields are preserved but not exposed to users
+### 8. Archived schema fields are preserved but not exposed to users — ✅ Resolved (2026-06-07)
 
 Simple: dropped schema fields are kept in memory and on disk, but the editor
 does not show them or provide the documented discard action.
@@ -345,6 +345,26 @@ docs is missing; users cannot inspect or explicitly discard orphaned data.
 
 Suggested fix: add archived-data UI to `CollectionItemForm` and a server-side
 discard path that intentionally removes archived keys.
+
+**Resolution:** The editor already received the `_archived` map (it's returned by
+`getCollectionItem` → `normalizeCollectionItem`); the form simply ignored it. Now
+`CollectionItemForm` shows an amber **"Archived data"** notice listing each
+orphaned field id, with a **"Discard archived data"** button behind the shared
+`ConfirmationModal`/`useConfirmationAction`. New service
+`discardArchivedCollectionItem` (`server/services/collectionService.js`) is the
+explicit counterpart to the BLOCKER-2 merge-back: it strips out-of-schema setting
+keys and rewrites the item in place, preserving `uuid`/`created`/`updated` (it
+clears hidden data, not visible content). New controller `discardArchivedItem` +
+route `POST /:collectionType/:itemSlug/discard-archived` (mirrors `duplicate`),
+running the same media-usage sync `updateItem` does. On confirm the form calls the
+new `discardArchivedCollectionItem` query, clears the notice, and toasts —
+without resetting in-progress edits (discard touches only orphaned keys), and it
+is naturally edit-only (create has no `_archived`). No `core-collections.md`
+change — §4 already documents this exact behavior. Tests:
+`discardArchivedCollectionItem` (2 service cases — strips orphaned keys/keeps
+schema fields/preserves timestamps, and null for a missing item) in
+`collectionItems.test.js`; the endpoint (2 cases — strips on disk with empty
+`_archived`, and 404) in `collectionApi.test.js`.
 
 ### 9. Live widget morphs do not get the documented menu active-state context
 
