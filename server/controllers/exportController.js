@@ -18,7 +18,9 @@ import {
   loadCollectionTemplate,
   prepareCollectionItemForRender,
   buildCollectionItemPageData,
+  loadCollectionItemsByUuid,
 } from "../services/collectionService.js";
+import { loadMenuMaps } from "../services/menuResolver.js";
 import { readProjectThemeData } from "./themeController.js";
 import { listProjectPagesData, readGlobalWidgetData } from "./pageController.js";
 import * as projectRepo from "../db/repositories/projectRepository.js";
@@ -553,6 +555,10 @@ Per aspera ad astra
     for (const page of pagesDataArray) {
       if (page.uuid) pagesByUuidForItems.set(page.uuid, page);
     }
+    // Menu maps + stable collection-item refs for resolving `menu`-type item
+    // settings (finding #10) — loaded once, shared across every item.
+    const menuMapsForItems = await loadMenuMaps(projectFolderName);
+    const collectionItemsByUuidForItems = await loadCollectionItemsByUuid(projectFolderName);
     const itemAppVersion = await getAppVersion();
     const itemEasterEgg = `<!--\nMade with Widgetizer v${itemAppVersion}\nPer aspera ad astra\n-->\n`;
 
@@ -589,6 +595,8 @@ Per aspera ad astra
           enqueuedPreloads: new Map(),
           collectionCache: new Map(),
           pagesByUuid: pagesByUuidForItems,
+          menuMaps: menuMapsForItems,
+          collectionItemsByUuid: collectionItemsByUuidForItems,
           exportVersion: version,
           outputPathPrefix: "../",
           currentCanonicalPath: `${schema.slugPrefix}/${item.slug}.html`,
@@ -605,7 +613,10 @@ Per aspera ad astra
         }
 
         // Resolve item links at depth + sanitize, then render the collection template.
-        const resolvedItem = prepareCollectionItemForRender(item, schema, pagesByUuidForItems, "../");
+        const resolvedItem = prepareCollectionItemForRender(item, schema, pagesByUuidForItems, "../", {
+          menuMaps: menuMapsForItems,
+          collectionItemsByUuid: collectionItemsByUuidForItems,
+        });
         // Page-shaped object (spec Section 13) drives layout title/seo/body class.
         // Built BEFORE the template render so item templates receive the
         // documented page/collection/project context, not just item (Finding #5).

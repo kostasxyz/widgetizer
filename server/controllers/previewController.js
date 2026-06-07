@@ -24,7 +24,9 @@ import {
   loadCollectionTemplate,
   prepareCollectionItemForRender,
   buildCollectionItemPageData,
+  loadCollectionItemsByUuid,
 } from "../services/collectionService.js";
+import { loadMenuMaps } from "../services/menuResolver.js";
 import { readProjectThemeData } from "./themeController.js";
 import { listProjectPagesData, readGlobalWidgetData } from "./pageController.js";
 
@@ -341,6 +343,12 @@ export async function createCollectionPreviewToken(req, res) {
       if (page.uuid) pagesByUuid.set(page.uuid, page);
     }
 
+    // Menu maps + stable collection-item refs, for resolving `menu`-type item
+    // settings (finding #10). Shared with the widget path via menuResolver.
+    const menuMaps = await loadMenuMaps(folder);
+    const collectionItemsByUuid = await loadCollectionItemsByUuid(folder);
+    const menuDeps = { menuMaps, collectionItemsByUuid };
+
     // Draft item assembled from the (unsaved) form values.
     const safeSlug = (slug && String(slug)) || "preview";
     const now = new Date().toISOString();
@@ -367,12 +375,14 @@ export async function createCollectionPreviewToken(req, res) {
       enqueuedPreloads: new Map(),
       collectionCache: new Map(),
       pagesByUuid,
+      menuMaps,
+      collectionItemsByUuid,
       pageSlug: `${schema.slugPrefix}/${safeSlug}`,
       outputPathPrefix: "",
       currentCanonicalPath: `${schema.slugPrefix}/${safeSlug}.html`,
     };
 
-    const resolvedItem = prepareCollectionItemForRender(draftItem, schema, pagesByUuid, "");
+    const resolvedItem = prepareCollectionItemForRender(draftItem, schema, pagesByUuid, "", menuDeps);
 
     let headerContent = "";
     let footerContent = "";

@@ -23,6 +23,7 @@ import { isAtomicTmpFile, writeJsonAtomic } from "../utils/atomicFs.js";
 import { sanitizeSlug, generateUniqueSlug } from "../utils/slugHelpers.js";
 import { prefixInternalHref } from "../utils/linkPrefixer.js";
 import { sanitizeCollectionItemData, stripHtmlTags } from "./sanitizationService.js";
+import { resolveMenuSettings } from "./menuResolver.js";
 
 const SLUG_RE = /^[a-z0-9-]+$/;
 const ALLOWED_SORTS = ["manual", "created_desc", "created_asc", "title_asc", "title_desc"];
@@ -1004,12 +1005,49 @@ export function resolveCollectionItemLinks(item, pagesByUuid, outputPathPrefix) 
  * @param {object} schema - Collection-type schema ({ settings })
  * @param {Map} pagesByUuid - uuid -> page ({ slug })
  * @param {string} outputPathPrefix - "" at root, "../" for nested item pages
+ * @param {object} [menuDeps] - { menuMaps, collectionItemsByUuid } to resolve
+ *   `menu`-type settings into menu objects (finding #10). When omitted, menu
+ *   settings pass through unresolved (back-compat).
  * @returns {object} resolved + sanitized clone
  */
-export function prepareCollectionItemForRender(item, schema, pagesByUuid, outputPathPrefix) {
+export function prepareCollectionItemForRender(item, schema, pagesByUuid, outputPathPrefix, menuDeps = null) {
   const resolved = resolveCollectionItemLinks(item, pagesByUuid, outputPathPrefix);
+  // Resolve menu-type settings the same way widgets do (shared menuResolver), so
+  // an item template gets a full menu object instead of a raw UUID string.
+  if (menuDeps && menuDeps.menuMaps && resolved && resolved.settings) {
+    resolveMenuSettings(resolved.settings, schema.settings, {
+      menuMaps: menuDeps.menuMaps,
+      pagesByUuid,
+      collectionItemsByUuid: menuDeps.collectionItemsByUuid || new Map(),
+      outputPathPrefix,
+    });
+  }
   sanitizeCollectionItemData(resolved, schema);
   return resolved;
+}
+
+/**
+ * Load every `hasItemPages` collection item and return a map of
+ * item uuid -> { slugPrefix, slug }, for resolving stable collection-item menu
+ * references (#11) to their current page URL. Cached per render by the caller.
+ * @param {string} projectFolderName - The project folder name
+ * @returns {Promise<Map>} Map of uuid -> { slugPrefix, slug }
+ */
+export async function loadCollectionItemsByUuid(projectFolderName) {
+  const map = new Map();
+  try {
+    const schemas = await listCollectionSchemas(projectFolderName);
+    for (const schema of schemas) {
+      if (!schema.hasItemPages) continue;
+      const items = await listCollectionItems(projectFolderName, schema.type);
+      for (const item of items) {
+        if (item.uuid) map.set(item.uuid, { slugPrefix: schema.slugPrefix, slug: item.slug });
+      }
+    }
+  } catch (error) {
+    console.warn(`Could not load collection items for menu resolution: ${error.message}`);
+  }
+  return map;
 }
 
 /** True when `siteUrl` is a non-empty, parseable absolute URL. */

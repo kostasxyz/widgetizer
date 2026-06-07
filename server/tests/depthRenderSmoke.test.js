@@ -35,7 +35,8 @@ console.error = () => {};
 const { getProjectDir, getProjectPagesDir } = await import("../config.js");
 const projectRepo = await import("../db/repositories/projectRepository.js");
 const { writeMediaFile } = await import("../controllers/mediaController.js");
-const { renderPageLayout, resolveMenuItemLinks } = await import("../services/renderingService.js");
+const { renderPageLayout } = await import("../services/renderingService.js");
+const { resolveMenuItemLinks } = await import("../services/menuResolver.js");
 const { rewriteStoragePaths, markdownAlternateHref } = await import("../utils/exportPostProcess.js");
 const { closeDb } = await import("../db/index.js");
 

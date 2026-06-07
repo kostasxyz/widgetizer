@@ -716,6 +716,32 @@ describe("prepareCollectionItemForRender", () => {
     // original still carries the raw payload — only the returned clone is cleaned
     assert.match(item.settings.description, /<script>x\(\)<\/script>/);
   });
+
+  it("resolves a menu-type setting into a menu object when menuDeps is provided (#10)", () => {
+    const menuSchema = {
+      settings: [
+        { id: "title", type: "text" },
+        { id: "nav", type: "menu" },
+      ],
+    };
+    const item = { settings: { title: "A", nav: "menu-1" } };
+    const menu = { uuid: "menu-1", items: [{ pageUuid: "page-uuid-1", label: "About" }] };
+    const menuDeps = {
+      menuMaps: { byUuid: new Map([["menu-1", menu]]), bySlug: new Map() },
+      collectionItemsByUuid: new Map(),
+    };
+    const out = prepareCollectionItemForRender(item, menuSchema, pagesByUuid, "../", menuDeps);
+    assert.equal(typeof out.settings.nav, "object");
+    assert.equal(out.settings.nav.items[0].link, "../about.html");
+    assert.equal(out.settings.nav.items[0].canonicalPath, "about.html");
+  });
+
+  it("leaves a menu setting as a raw value without menuDeps (back-compat)", () => {
+    const menuSchema = { settings: [{ id: "nav", type: "menu" }] };
+    const item = { settings: { nav: "menu-1" } };
+    const out = prepareCollectionItemForRender(item, menuSchema, pagesByUuid, "");
+    assert.equal(out.settings.nav, "menu-1");
+  });
 });
 
 // keep getProjectCollectionDir referenced (used indirectly via service)

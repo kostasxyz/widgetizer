@@ -412,7 +412,7 @@ the active marker shows for a matching path and is absent for a non-matching one
 `core-collections.md` already documents `currentCanonicalPath` on every render
 path; the morph now matches it.
 
-### 10. Collection `menu` fields store a menu UUID but do not render as menu data
+### 10. Collection `menu` fields store a menu UUID but do not render as menu data — ✅ Resolved (2026-06-07)
 
 Simple: collections say they support the `menu` setting type, but item templates
 only receive the raw stored menu value.
@@ -445,6 +445,31 @@ documented "all setting types" contract is incomplete for collection templates.
 Suggested fix: either document/reject `menu` fields for collection schemas in v1,
 or resolve schema-declared `menu` settings before item template render using the
 same menu-map/page-link/depth-prefix logic as widget rendering.
+
+**Resolution:** Took the resolve path (not reject). The menu-resolution primitives
+`renderWidget` used — `loadMenuMaps`, `resolveMenuItemLinks`, `resolveMenuPageLinks`
+— moved into a new shared module `server/services/menuResolver.js` (the render gate
+lives in `collectionService`, which `renderingService` imports, so the primitives
+can't sit in `renderingService` without a cycle). A new
+`resolveMenuSettings(settings, schemaSettings, deps)` there captures the exact widget
+loop (UUID→menu object, slug fallback, empty/unknown/error → `{ items: [] }`) and is
+now the **single** source both paths use: `renderWidget` was refactored onto it, and
+`prepareCollectionItemForRender` (the collection-item render gate, finding #2) calls
+it after link resolution when given `menuDeps` (`{ menuMaps, collectionItemsByUuid }`).
+All three item render paths thread `menuDeps`: the `| collection` filter (lazy-loads
+the maps only when the schema declares a menu setting), the preview item page
+(`previewController`), and the export item page (`exportController`, loaded once for
+all items). An item template now receives a full menu object — `items[]` with
+depth-prefixed `link` + un-prefixed `canonicalPath` for active-state — exactly like a
+widget, rendered by the unchanged `menu` snippet. `menuDeps` is optional, so non-menu
+collections and existing callers are unaffected (no extra I/O). `loadCollectionItemsByUuid`
+(#11) moved from `renderingService` to `collectionService` so all consumers import it
+without a cycle. Tests: new `menuResolver.test.js` (resolve/slug-fallback/empty/
+unknown/no-op), gate cases in `collectionItems.test.js` (resolves with `menuDeps`,
+untouched without), and an end-to-end `collectionItemExport.test.js` case (a `menu`
+item setting renders depth-prefixed `../about.html` links in the exported item page).
+Verified with lint, locale validation, the backend suite (incl. the unchanged widget
+menu tests), and a production build.
 
 ### 11. Menu editor cannot select collection item pages as stable targets — ✅ Resolved (2026-06-07)
 

@@ -34,6 +34,7 @@ const {
   getProjectCollectionSchemaPath,
   getProjectCollectionTemplatePath,
   getProjectCollectionItemPath,
+  getProjectMenusDir,
   CORE_WIDGETS_DIR,
 } = await import("../config.js");
 const projectRepo = await import("../db/repositories/projectRepository.js");
@@ -71,6 +72,7 @@ const PORTFOLIO_SCHEMA = {
     { type: "image", id: "featured_image", label: "Image" },
     { type: "link", id: "external_url", label: "Link" },
     { type: "link", id: "dead_link", label: "Dead link" },
+    { type: "menu", id: "nav", label: "Nav" },
   ],
 };
 
@@ -84,6 +86,7 @@ const TEMPLATE = `<article>
   <img class="feat" src="{{ item.settings.featured_image }}">
   <a class="ext" href="{{ item.settings.external_url.href }}">ext</a>
   <a class="dead" href="{{ item.settings.dead_link.href }}">dead</a>
+  <nav class="item-nav">{% for mi in item.settings.nav.items %}<a href="{{ mi.link }}">{{ mi.label }}</a>{% endfor %}</nav>
   <p class="ctx-collection">{{ collection.displayName }}</p>
   <p class="ctx-project">{{ project.siteTitle }}</p>
   <p class="ctx-page">{{ page.slug }}</p>
@@ -122,6 +125,14 @@ async function seedProject(id, folder, { withTemplate = true, items, siteUrl = S
     JSON.stringify({ name: "About", slug: "about", uuid: "uuid-about", widgets: {}, widgetsOrder: [] }),
   );
 
+  // A menu, for the collection-item `menu`-setting render (finding #10).
+  await fs.outputJson(path.join(getProjectMenusDir(folder), "main.json"), {
+    id: "main",
+    uuid: "menu-main",
+    name: "Main",
+    items: [{ id: "i1", label: "About", pageUuid: "uuid-about" }],
+  });
+
   await fs.outputFile(getProjectCollectionSchemaPath(folder, "portfolio"), JSON.stringify(PORTFOLIO_SCHEMA, null, 2));
   if (withTemplate) {
     await fs.writeFile(getProjectCollectionTemplatePath(folder, "portfolio"), TEMPLATE);
@@ -149,6 +160,7 @@ const ALPHA = {
     featured_image: "/uploads/images/featured.jpg",
     external_url: { pageUuid: "uuid-about", href: "", text: "", target: "_self" },
     dead_link: { pageUuid: "uuid-gone", href: "", text: "", target: "_self" },
+    nav: "menu-main",
   },
   // Page-shaped SEO (Finding #12): manual meta description + social image.
   seo: { description: "Alpha case study.", og_image: "/uploads/images/featured.jpg" },
@@ -209,6 +221,11 @@ describe("item-page export — happy path", () => {
     assert.match(html, /name="description" content="Alpha case study\."/);
     assert.match(html, /rel="canonical" href="https:\/\/items\.example\.com\/portfolio\/project-alpha\.html"/);
     assert.match(html, /og:image" content="https:\/\/items\.example\.com\/assets\/images\/featured\.jpg"/);
+  });
+
+  it("resolves a `menu` setting in the item template to depth-prefixed links (finding #10)", async () => {
+    const html = await fs.readFile(path.join(outputDir, "portfolio", "project-alpha.html"), "utf8");
+    assert.match(html, /<nav class="item-nav"><a href="\.\.\/about\.html">About<\/a><\/nav>/);
   });
 
   it("prefixes the theme asset and rewrites the /uploads image at depth", async () => {

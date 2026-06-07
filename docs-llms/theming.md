@@ -1381,7 +1381,7 @@ Authoring rules (enforced at runtime and at theme upload):
 
 ### Item pages (`template.liquid`)
 
-When `hasItemPages: true`, export generates `{slugPrefix}/{itemSlug}.html` per item, rendering `collection-types/{type}/template.liquid` **inside** the theme's main layout (header/footer/main slots, like a page template). Context: `item` (`id`, `uuid`, `slug`, `url`, `created`, `updated`, `settings.*`), `collection` (the schema), `page` (a page-shaped SEO object), plus the usual `project`/`theme`/`mediaFiles`.
+When `hasItemPages: true`, export generates `{slugPrefix}/{itemSlug}.html` per item, rendering `collection-types/{type}/template.liquid` **inside** the theme's main layout (header/footer/main slots, like a page template). Context: `item` (`id`, `uuid`, `slug`, `url`, `created`, `updated`, `settings.*`), `collection` (the schema), `page` (a page-shaped SEO object), plus the usual `project`/`theme`/`mediaFiles`. A `menu`-type setting resolves to a full menu object (like widgets, finding #10) — render it with the `menu` snippet.
 
 ```liquid
 <article class="portfolio-single">

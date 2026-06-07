@@ -11,11 +11,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  resolveLinkValue,
-  resolveMenuItemLinks,
-  resolveMenuPageLinks,
-} from "../services/renderingService.js";
+import { resolveLinkValue } from "../services/renderingService.js";
+import { resolveMenuItemLinks, resolveMenuPageLinks } from "../services/menuResolver.js";
 
 const pagesByUuid = new Map([["uuid-about", { uuid: "uuid-about", slug: "about" }]]);
 
