@@ -2,22 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-  arrayMove,
-} from "@dnd-kit/sortable";
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import {
   Pencil,
   Trash2,
   Copy,
@@ -25,7 +9,6 @@ import {
   Check,
   CirclePlus,
   MoreVertical,
-  GripVertical,
   AlertTriangle,
   Database,
   Eye,
@@ -46,95 +29,15 @@ import useProjectStore from "../stores/projectStore";
 import { resolveLucideIcon } from "../utils/lucideIcon";
 import PageLayout from "../components/layout/PageLayout";
 import Button, { IconButton } from "../components/ui/Button";
+import Table from "../components/ui/Table";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
 import CollectionItemPreview from "../components/collections/CollectionItemPreview";
-
-const TABLE_CLASS = "w-full rounded-lg border border-slate-200 border-collapse bg-white";
-
-/** Presentational row cells, shared by plain and sortable rows. */
-function ItemCells({ item, type, isSelected, onToggleSelect, dragHandle, rowActions, t }) {
-  const { formatDate } = useFormatDate();
-  const cellClass = `py-3 px-4 ${isSelected ? "bg-pink-50" : ""}`;
-
-  return (
-    <>
-      {dragHandle !== undefined && (
-        <td className={`${cellClass} w-8 !pl-4 !pr-1`}>{dragHandle}</td>
-      )}
-      <td className={`${cellClass} w-12`}>
-        <IconButton
-          onClick={() => onToggleSelect(item.slug)}
-          variant="neutral"
-          size="sm"
-          className="border border-transparent bg-white/80 hover:border-slate-200 hover:bg-white"
-        >
-          {isSelected ? (
-            <div className="w-4 h-4 bg-pink-500 text-white flex items-center justify-center rounded-sm">
-              <Check size={12} />
-            </div>
-          ) : (
-            <div className="w-4 h-4 border border-slate-400 rounded-sm" />
-          )}
-        </IconButton>
-      </td>
-      <td className={cellClass}>
-        <div className="flex items-center gap-2 min-w-0">
-          <Link
-            to={`/collections/${type}/${item.slug}/edit`}
-            className="block min-w-0 rounded-sm font-medium text-slate-900 transition-colors hover:text-pink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2"
-          >
-            <span className="block truncate">{item.title || item.slug}</span>
-          </Link>
-          {item.invalid && (
-            <span
-              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800"
-              title={t("collections.invalidBadge")}
-            >
-              <AlertTriangle size={12} />
-              {t("collections.invalidBadge")}
-            </span>
-          )}
-        </div>
-      </td>
-      <td className={`${cellClass} whitespace-nowrap`}>
-        <div className="text-slate-600 text-sm">{formatDate(item.updated)}</div>
-      </td>
-      <td className={`${cellClass} text-right`}>{rowActions}</td>
-    </>
-  );
-}
-
-/** A sortable <tr> wrapper used when manual reordering is active. */
-function SortableRow({ item, isSelected, children }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: item.slug,
-  });
-
-  const style = {
-    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-    position: "relative",
-    zIndex: isDragging ? 10 : "auto",
-  };
-
-  return (
-    <tr
-      ref={setNodeRef}
-      style={style}
-      className={`group border-b border-slate-100 transition-colors duration-150 hover:bg-slate-50 last:border-b-0 ${
-        isSelected ? "bg-pink-50" : ""
-      }`}
-    >
-      {children({ attributes, listeners })}
-    </tr>
-  );
-}
 
 export default function CollectionItems() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { type } = useParams();
+  const { formatDate } = useFormatDate();
   const showToast = useToastStore((state) => state.showToast);
   const activeProject = useProjectStore((state) => state.activeProject);
 
@@ -152,11 +55,6 @@ export default function CollectionItems() {
   const schema = (schemas || []).find((s) => s.type === type) || null;
   const displayName = schema?.displayName || type;
   const displayNamePlural = schema?.displayNamePlural || displayName;
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
 
   // Reset transient UI state when switching collection types.
   useEffect(() => {
@@ -273,25 +171,19 @@ export default function CollectionItems() {
     }
   };
 
-  const handleDragEnd = async (event) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = orderedItems.findIndex((item) => item.slug === active.id);
-    const newIndex = orderedItems.findIndex((item) => item.slug === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const next = arrayMove(orderedItems, oldIndex, newIndex);
-    setOrderedItems(next); // optimistic
+  // Drag-reorder persists the new order; revert to server truth on failure.
+  // (Only reachable when reorderActive, so filteredItems is the full order.)
+  const handleReorder = async (reordered) => {
+    setOrderedItems(reordered); // optimistic
     try {
       await reorderCollectionItems(
         type,
-        next.map((item) => item.slug),
+        reordered.map((item) => item.slug),
       );
     } catch (error) {
       console.error("Error reordering items:", error);
       showToast(t("collections.toasts.reorderError"), "error");
-      refetchItems(); // revert to server truth
+      refetchItems();
     }
   };
 
@@ -392,95 +284,84 @@ export default function CollectionItems() {
     );
   };
 
-  const headerRow = (
-    <thead>
-      <tr className="bg-slate-50 border-b border-slate-200">
-        {reorderActive && <th className="w-8 py-3 px-4" aria-hidden="true" />}
-        <th className="text-left py-3 px-4 font-medium text-slate-700 w-12">
-          <IconButton
-            onClick={handleSelectAll}
-            variant="neutral"
-            size="sm"
-            className="border border-transparent bg-white/80 hover:border-slate-200 hover:bg-white"
-          >
-            {allFilteredSelected ? (
-              <div className="w-4 h-4 bg-pink-500 text-white flex items-center justify-center rounded-sm">
-                <Check size={12} />
-              </div>
-            ) : (
-              <div className="w-4 h-4 border border-slate-400 rounded-sm" />
-            )}
-          </IconButton>
-        </th>
-        <th className="text-left py-3 px-4 font-medium text-slate-700">{t("collections.headers.title")}</th>
-        <th className="text-left py-3 px-4 font-medium text-slate-700">{t("collections.headers.updated")}</th>
-        <th className="text-right py-3 px-4 font-medium text-slate-700">{t("collections.headers.actions")}</th>
-      </tr>
-    </thead>
-  );
-
-  const colCount = reorderActive ? 5 : 4;
-
-  const emptyBody = (
-    <tbody>
-      <tr>
-        <td colSpan={colCount} className="text-center py-8 text-slate-500">
-          {searchTerm ? t("collections.noItemsMatch", { term: searchTerm }) : t("collections.noItemsAvailable")}
-        </td>
-      </tr>
-    </tbody>
-  );
-
-  const plainBody = (
-    <tbody className="[&_td]:text-sm [&_td_*]:text-sm">
-      {filteredItems.map((item) => (
-        <tr
-          key={item.slug}
-          className="group border-b border-slate-100 transition-colors duration-150 hover:bg-slate-50 last:border-b-0"
+  // Per-row <td>s for the shared <Table>. The drag-handle cell (sortable mode)
+  // and the selected-row background are owned by <Table> (via rowClassName), so
+  // these cells stay presentation-only.
+  const renderItemRow = (item) => (
+    <>
+      <td className="py-3 px-4 w-12">
+        <IconButton
+          onClick={() => toggleSelect(item.slug)}
+          variant="neutral"
+          size="sm"
+          className="border border-transparent bg-white/80 hover:border-slate-200 hover:bg-white"
         >
-          <ItemCells
-            item={item}
-            type={type}
-            isSelected={selectedSlugs.includes(item.slug)}
-            onToggleSelect={toggleSelect}
-            rowActions={renderRowActions(item)}
-            t={t}
-          />
-        </tr>
-      ))}
-    </tbody>
+          {selectedSlugs.includes(item.slug) ? (
+            <div className="w-4 h-4 bg-pink-500 text-white flex items-center justify-center rounded-sm">
+              <Check size={12} />
+            </div>
+          ) : (
+            <div className="w-4 h-4 border border-slate-400 rounded-sm" />
+          )}
+        </IconButton>
+      </td>
+      <td className="py-3 px-4">
+        <div className="flex items-center gap-2 min-w-0">
+          <Link
+            to={`/collections/${type}/${item.slug}/edit`}
+            className="block min-w-0 rounded-sm font-medium text-slate-900 transition-colors hover:text-pink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2"
+          >
+            <span className="block truncate">{item.title || item.slug}</span>
+          </Link>
+          {item.invalid && (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800"
+              title={t("collections.invalidBadge")}
+            >
+              <AlertTriangle size={12} />
+              {t("collections.invalidBadge")}
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="py-3 px-4 whitespace-nowrap">
+        <div className="text-slate-600 text-sm">{formatDate(item.updated)}</div>
+      </td>
+      <td className="py-3 px-4 text-right">{renderRowActions(item)}</td>
+    </>
   );
 
-  const sortableBody = (
-    <SortableContext items={filteredItems.map((item) => item.slug)} strategy={verticalListSortingStrategy}>
-      <tbody className="[&_td]:text-sm [&_td_*]:text-sm">
-        {filteredItems.map((item) => (
-          <SortableRow key={item.slug} item={item} isSelected={selectedSlugs.includes(item.slug)}>
-            {({ attributes, listeners }) => (
-              <ItemCells
-                item={item}
-                type={type}
-                isSelected={selectedSlugs.includes(item.slug)}
-                onToggleSelect={toggleSelect}
-                dragHandle={
-                  <button
-                    type="button"
-                    className="cursor-grab text-slate-400 hover:text-slate-700 active:cursor-grabbing touch-none"
-                    aria-label="Drag to reorder"
-                    {...attributes}
-                    {...listeners}
-                  >
-                    <GripVertical size={16} />
-                  </button>
-                }
-                rowActions={renderRowActions(item)}
-                t={t}
-              />
-            )}
-          </SortableRow>
-        ))}
-      </tbody>
-    </SortableContext>
+  const headers = [
+    <IconButton
+      key="select-all"
+      onClick={handleSelectAll}
+      variant="neutral"
+      size="sm"
+      className="border border-transparent bg-white/80 hover:border-slate-200 hover:bg-white"
+    >
+      {allFilteredSelected ? (
+        <div className="w-4 h-4 bg-pink-500 text-white flex items-center justify-center rounded-sm">
+          <Check size={12} />
+        </div>
+      ) : (
+        <div className="w-4 h-4 border border-slate-400 rounded-sm" />
+      )}
+    </IconButton>,
+    t("collections.headers.title"),
+    t("collections.headers.updated"),
+    t("collections.headers.actions"),
+  ];
+
+  // Search-empty state mirrors the Pages listing (icon + heading + subtext);
+  // the non-search fallback is a plain string (rendered in Table's empty cell).
+  const emptyState = searchTerm ? (
+    <div className="text-center">
+      <SchemaIcon className="mx-auto mb-2 text-slate-400" size={32} />
+      <div className="font-medium text-slate-700">{t("collections.noItemsFound")}</div>
+      <div className="text-sm text-slate-500">{t("collections.noItemsMatch", { term: searchTerm })}</div>
+    </div>
+  ) : (
+    t("collections.noItemsAvailable")
   );
 
   return (
@@ -544,24 +425,16 @@ export default function CollectionItems() {
             </div>
           </div>
 
-          {reorderActive ? (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              modifiers={[restrictToVerticalAxis]}
-              onDragEnd={handleDragEnd}
-            >
-              <table className={TABLE_CLASS}>
-                {headerRow}
-                {filteredItems.length === 0 ? emptyBody : sortableBody}
-              </table>
-            </DndContext>
-          ) : (
-            <table className={TABLE_CLASS}>
-              {headerRow}
-              {filteredItems.length === 0 ? emptyBody : plainBody}
-            </table>
-          )}
+          <Table
+            sortable={reorderActive}
+            getRowId={(item) => item.slug}
+            onReorder={handleReorder}
+            rowClassName={(item) => (selectedSlugs.includes(item.slug) ? "bg-pink-50" : "")}
+            headers={headers}
+            data={filteredItems}
+            emptyMessage={emptyState}
+            renderRow={renderItemRow}
+          />
         </>
       )}
 
