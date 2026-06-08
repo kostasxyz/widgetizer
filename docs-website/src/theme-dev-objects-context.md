@@ -119,7 +119,7 @@ These are not available inside widget templates.
 
 The following globals are available in all templates, including inside `{% render %}` snippets:
 
-- `pageSlug` — The current page slug (e.g., `about`, `contact`). Used by the core `menu.liquid` snippet to mark active menu items with the `is-active` class.
+- `currentCanonicalPath` — The current page's un-prefixed output path (e.g., `about.html`, or `portfolio/my-project.html` for a collection item page). Used by the core `menu.liquid` snippet to mark active menu items with the `is-active` class — it compares this against each menu item's `canonicalPath`.
 - `filePath` — Base path for resolving file assets (PDFs uploaded via the `file` setting type). Use it as `{{ filePath | append: '/' | append: filename }}` so links work in both preview and exported output. See [Setting Types](theme-dev-setting-types.html#media-types) for the `file` setting and its template usage.
 
 # Practical Guidance

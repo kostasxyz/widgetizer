@@ -270,7 +270,7 @@ The same helper is shared by the widget link resolver (`resolveLinkValue` / `res
 
 ### Menu active-state (`currentCanonicalPath`)
 
-Because menu hrefs are now depth-prefixed (`../about.html`), `src/core/snippets/menu.liquid` can no longer compare the href to identify the active item. Each resolved menu item carries a separate un-prefixed `canonicalPath`; the snippet compares it against a per-render `currentCanonicalPath` global for `is-active`/`aria-current`. `currentCanonicalPath` is set on **every** render path — `previewController.js`, the page-export loop, the `renderSingleWidget` morph path, and the collection-item loop — not only for item pages (the deprecated `pageSlug` global is kept for backwards compatibility). Themes that override the core `menu.liquid` snippet must adopt the `canonicalPath`/`currentCanonicalPath` comparison.
+Because menu hrefs are now depth-prefixed (`../about.html`), `src/core/snippets/menu.liquid` can no longer compare the href to identify the active item. Each resolved menu item carries a separate un-prefixed `canonicalPath`; the snippet compares it against a per-render `currentCanonicalPath` global for `is-active`/`aria-current`. `currentCanonicalPath` is set on **every** render path — `previewController.js`, the page-export loop, the `renderSingleWidget` morph path, and the collection-item loop — not only for item pages. Themes that override the core `menu.liquid` snippet must adopt the `canonicalPath`/`currentCanonicalPath` comparison.
 
 ---
 

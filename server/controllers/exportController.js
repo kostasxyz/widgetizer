@@ -385,7 +385,6 @@ export async function exportProjectToDir(projectId, options = {}) {
         enqueuedStyles: new Map(),
         enqueuedScripts: new Map(),
         exportVersion: version, // For cache busting
-        pageSlug: pageData.slug || "",
         // Un-prefixed path of this page, for menu active-state matching.
         currentCanonicalPath: `${pageData.slug || ""}.html`,
       };

@@ -88,7 +88,6 @@ async function generatePreviewHtml(pageData, rawThemeSettings, previewMode) {
     themeSettingsRaw: rawThemeSettings,
     enqueuedStyles: new Map(),
     enqueuedScripts: new Map(),
-    pageSlug: pageData.slug || "",
     // Un-prefixed path of this page, for menu active-state matching.
     currentCanonicalPath: `${pageData.slug || ""}.html`,
   };
@@ -373,7 +372,6 @@ export async function createCollectionPreviewToken(req, res) {
       pagesByUuid,
       menuMaps,
       collectionItemsByUuid,
-      pageSlug: `${schema.slugPrefix}/${safeSlug}`,
       outputPathPrefix: "",
       currentCanonicalPath: `${schema.slugPrefix}/${safeSlug}.html`,
     };
