@@ -28,7 +28,7 @@ export default function SettingsRenderer({ setting, value, onChange, error, allo
   const { t } = useTranslation();
   const { tTheme } = useThemeLocale();
 
-  const { type, id, label, description, options, min, max, step, unit, allow_alpha, language, size, compact } =
+  const { type, id, label, description, required, options, min, max, step, unit, allow_alpha, language, size, compact } =
     setting || {};
 
   // Translate options (select/radio) via theme locale
@@ -127,7 +127,7 @@ export default function SettingsRenderer({ setting, value, onChange, error, allo
 
   return (
     <div className={`setting-type-${type}`}>
-      <SettingsField id={id} label={displayLabel} description={translatedDescription} error={error} type={type}>
+      <SettingsField id={id} label={displayLabel} description={translatedDescription} error={error} type={type} required={required}>
         {renderInput()}
       </SettingsField>
     </div>

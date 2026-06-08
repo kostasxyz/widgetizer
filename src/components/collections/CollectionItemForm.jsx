@@ -227,7 +227,7 @@ export default function CollectionItemForm({
   // pages (otherwise there is no template to render).
   const [previewDraft, setPreviewDraft] = useState(null);
   const canPreview = hasItemPages;
-  const [showSeo, setShowSeo] = useState(false);
+  const [showMore, setShowMore] = useState(false);
   const openPreview = () => {
     const values = getValues();
     setPreviewDraft({
@@ -235,9 +235,6 @@ export default function CollectionItemForm({
       settings: values.settings || {},
     });
   };
-
-  const labelWithRequired = (setting) =>
-    setting.required && setting.label ? `${setting.label} *` : setting.label;
 
   return (
     <>
@@ -269,31 +266,9 @@ export default function CollectionItemForm({
           </div>
         )}
 
-        {/* Slug */}
-        <div className="form-field">
-          <label htmlFor="slug" className="form-label">
-            {t("collectionsForm.slugLabel")} <span className="text-pink-500">*</span>
-          </label>
-          <div className="flex items-center">
-            <span className="text-slate-500 mr-1">/</span>
-            <input
-              type="text"
-              id="slug"
-              {...register("slug", {
-                required: t("collectionsForm.slugRequired"),
-                validate: (value) => value.trim() !== "" || t("collectionsForm.slugNotEmpty"),
-              })}
-              onBlur={(e) => e.target.value && setValue("slug", formatSlug(e.target.value))}
-              className="form-input flex-1"
-            />
-          </div>
-          {errors.slug && <p className="form-error">{errors.slug.message}</p>}
-          <p className="form-description">{t("collectionsForm.slugHelp")}</p>
-        </div>
-
         {/* Schema-driven fields. The title field gets a sticky row with an
             icon-only Preview button so it stays reachable while scrolling. */}
-        {allSettings.map((setting) => {
+        {allSettings.map((setting, index) => {
           if (setting.type === HEADER_TYPE) {
             // Render schema headers as the page form's section titles (1:1 with
             // PageForm/SeoFields), not the compact panel divider SettingsRenderer
@@ -302,7 +277,9 @@ export default function CollectionItemForm({
             const headerDesc = tTheme(setting.description);
             return (
               <Fragment key={setting.id}>
-                {headerLabel && <h3 className="form-section-title pt-4">{headerLabel}</h3>}
+                {headerLabel && (
+                  <h3 className={`form-section-title ${index === 0 ? "" : "pt-4"}`}>{headerLabel}</h3>
+                )}
                 {headerDesc && <p className="form-description">{headerDesc}</p>}
               </Fragment>
             );
@@ -310,7 +287,7 @@ export default function CollectionItemForm({
           const renderer = (
             <SettingsRenderer
               key={setting.id}
-              setting={{ ...setting, label: labelWithRequired(setting) }}
+              setting={setting}
               value={settingsValues[setting.id]}
               onChange={handleSettingChange}
               error={fieldErrors[setting.id]}
@@ -336,21 +313,46 @@ export default function CollectionItemForm({
         })}
       </div>
 
-      {/* SEO — same editor pages use (Finding #12), only for collections that
-          render item pages. Collapsed by default, mirroring PageForm. */}
-      {hasItemPages && (
-        <div className="form-section">
-          <button
-            type="button"
-            onClick={() => setShowSeo((v) => !v)}
-            className="flex items-center gap-1 text-sm text-pink-500 hover:text-pink-700"
-          >
-            {showSeo ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            {t("forms.project.moreSettings")}
-          </button>
-          {showSeo && <SeoFields register={register} setValue={setValue} ogImage={ogImage} />}
-        </div>
-      )}
+      {/* More settings — the Filename, plus the SEO editor (Finding #12) for
+          collections that render item pages. Collapsed by default, mirroring PageForm. */}
+      <div className="form-section">
+        <button
+          type="button"
+          onClick={() => setShowMore((v) => !v)}
+          className="flex items-center gap-1 text-sm text-pink-500 hover:text-pink-700"
+        >
+          {showMore ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          {t("forms.project.moreSettings")}
+        </button>
+        {showMore && (
+          <>
+            {/* Filename */}
+            <div className="form-field">
+              <label htmlFor="slug" className="form-label">
+                {t("collectionsForm.slugLabel")} <span className="text-pink-500">*</span>
+              </label>
+              <div className="flex items-center">
+                <span className="text-slate-500 mr-1">/</span>
+                <input
+                  type="text"
+                  id="slug"
+                  {...register("slug", {
+                    required: t("collectionsForm.slugRequired"),
+                    validate: (value) => value.trim() !== "" || t("collectionsForm.slugNotEmpty"),
+                  })}
+                  onBlur={(e) => e.target.value && setValue("slug", formatSlug(e.target.value))}
+                  className="form-input flex-1"
+                />
+                <span className="text-slate-500 ml-1">.html</span>
+              </div>
+              {errors.slug && <p className="form-error">{errors.slug.message}</p>}
+              <p className="form-description">{t("collectionsForm.slugHelp")}</p>
+            </div>
+
+            {hasItemPages && <SeoFields register={register} setValue={setValue} ogImage={ogImage} />}
+          </>
+        )}
+      </div>
 
       <div className="form-actions-separated justify-end">
         {onCancel && (
