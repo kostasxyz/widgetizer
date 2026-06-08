@@ -19,10 +19,12 @@
     "meeting_point": "Resort reception",
     "languages": "English, Greek",
     "season": "April – October",
-    "gallery_1": "/uploads/images/aegean-06.jpg",
-    "gallery_2": "/uploads/images/aegean-07.jpg",
-    "gallery_3": "/uploads/images/aegean-08.jpg",
-    "gallery_4": "/uploads/images/aegean-10.jpg",
+    "gallery": [
+      { "src": "/uploads/images/aegean-06.jpg", "caption": "" },
+      { "src": "/uploads/images/aegean-07.jpg", "caption": "" },
+      { "src": "/uploads/images/aegean-08.jpg", "caption": "" },
+      { "src": "/uploads/images/aegean-10.jpg", "caption": "" }
+    ],
     "itinerary": "16:00 · Departure | Board the caïque at the old port\n16:45 · Hot springs | Swim in the warm volcanic waters\n18:00 · Red Beach | Snorkelling and free time ashore\n19:30 · Sunset | Mezze dinner aboard as the sun sets",
     "incl_hotel_pickup": true,
     "incl_guide": true,

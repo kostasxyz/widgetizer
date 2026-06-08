@@ -464,6 +464,32 @@ describe("updateThemeSettingsMediaUsage", () => {
     assert.ok(!logo.usedIn.includes("global:theme-settings"));
   });
 
+  it("tracks every image in a gallery theme setting (walks the array)", async () => {
+    const themeData = {
+      settings: {
+        global: {
+          media: [
+            {
+              type: "gallery",
+              id: "showcase",
+              value: [
+                { src: "/uploads/images/hero.jpg", caption: "a" },
+                { src: "/uploads/images/logo.png", caption: "b" },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const result = await updateThemeSettingsMediaUsage(PROJECT_ID, themeData);
+    assert.equal(result.success, true);
+    assert.deepEqual(result.mediaPaths.sort(), ["/uploads/images/hero.jpg", "/uploads/images/logo.png"]);
+
+    const media = await readMediaJson();
+    assert.ok(media.files.find((f) => f.id === IMG1).usedIn.includes("global:theme-settings"));
+    assert.ok(media.files.find((f) => f.id === IMG2).usedIn.includes("global:theme-settings"));
+  });
+
   it("handles empty or missing theme data", async () => {
     const result = await updateThemeSettingsMediaUsage(PROJECT_ID, {});
     assert.equal(result.success, true);

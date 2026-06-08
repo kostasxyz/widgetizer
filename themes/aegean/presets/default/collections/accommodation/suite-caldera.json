@@ -16,10 +16,12 @@
     "size_sqm": "48",
     "bed_type": "King bed",
     "view": "Caldera & sea view",
-    "gallery_1": "/uploads/images/aegean-17.jpg",
-    "gallery_2": "/uploads/images/aegean-19.jpg",
-    "gallery_3": "/uploads/images/aegean-13.jpg",
-    "gallery_4": "/uploads/images/aegean-16.jpg",
+    "gallery": [
+      { "src": "/uploads/images/aegean-17.jpg", "caption": "" },
+      { "src": "/uploads/images/aegean-19.jpg", "caption": "" },
+      { "src": "/uploads/images/aegean-13.jpg", "caption": "" },
+      { "src": "/uploads/images/aegean-16.jpg", "caption": "" }
+    ],
     "amenity_sea_view": true,
     "amenity_balcony": true,
     "amenity_pool": true,

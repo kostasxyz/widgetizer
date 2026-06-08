@@ -16,10 +16,12 @@
     "size_sqm": "32",
     "bed_type": "Queen bed",
     "view": "Village & partial sea view",
-    "gallery_1": "/uploads/images/aegean-14.jpg",
-    "gallery_2": "/uploads/images/aegean-15.jpg",
-    "gallery_3": "/uploads/images/aegean-12.jpg",
-    "gallery_4": "/uploads/images/aegean-11.jpg",
+    "gallery": [
+      { "src": "/uploads/images/aegean-14.jpg", "caption": "" },
+      { "src": "/uploads/images/aegean-15.jpg", "caption": "" },
+      { "src": "/uploads/images/aegean-12.jpg", "caption": "" },
+      { "src": "/uploads/images/aegean-11.jpg", "caption": "" }
+    ],
     "amenity_sea_view": true,
     "amenity_balcony": true,
     "amenity_pool": false,

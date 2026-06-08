@@ -24,6 +24,7 @@ export const SUPPORTED_SETTING_TYPES = [
   "font_picker",
   "menu",
   "image",
+  "gallery",
   "file",
   "link",
   "youtube",

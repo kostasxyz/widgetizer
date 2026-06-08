@@ -397,6 +397,50 @@ An image uploader that includes a preview, the ability to replace the image, and
 }
 ```
 
+### Gallery
+
+A repeatable list of images, each with an optional per-image caption. Where `image` holds a **single** upload path, `gallery` lets the user add any number of images, reorder them by dragging, and write a caption beneath each. Usable in widget, theme, and collection-type schemas.
+
+The stored value is an **ordered array of `{ src, caption }` objects**:
+
+```json
+"gallery": [
+  { "src": "/uploads/images/suite-01.jpg", "caption": "Caldera at dusk" },
+  { "src": "/uploads/images/suite-02.jpg", "caption": "" }
+]
+```
+
+- `src` — an upload path, exactly like a single `image` value. Image **alt/title** stay on the media record (edited via the Edit-metadata drawer), not in the setting.
+- `caption` — per-usage plain text authored on the item/widget; empty string when unset.
+- Empty value is `[]`; order is authored (drag-to-reorder) and preserved on save.
+- The `GalleryInput` editor never commits a blank row, and any row whose `src` is blank or not a valid `/uploads/images/...` path is dropped during **render sanitization** (writes store the raw value; sanitization happens at render, like other setting types) — so a template never receives an empty entry. A `required` gallery counts as missing until it has at least one entry with a valid `src`.
+
+```json
+{
+  "id": "gallery",
+  "type": "gallery",
+  "label": "tTheme:my_widget.settings.gallery.label",
+  "description": "tTheme:my_widget.settings.gallery.description"
+}
+```
+
+**Usage in Templates:**
+
+The value is plain iterable data — loop it directly (no special tag) and resolve each `src` with the existing `{% image %}` tag. Guard `img.src` so a stray empty row never renders:
+
+```liquid
+{% for img in item.settings.gallery %}
+  {% if img.src != blank %}
+    <figure>
+      {% image src: img.src, size: 'large' %}
+      {% if img.caption != blank %}<figcaption>{{ img.caption }}</figcaption>{% endif %}
+    </figure>
+  {% endif %}
+{% endfor %}
+```
+
+`{% image %}` resolves `img.src` (depth-aware path + media metadata for alt) exactly as for a single `image`; `{{ img.caption }}` is autoescaped.
+
 ### File
 
 A file asset selector for downloadable documents (currently PDF). The value is the storage path to the uploaded file (e.g. `/uploads/files/brochure.pdf`). Unlike the image input, this input is filename-oriented with no visual preview.

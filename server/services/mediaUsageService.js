@@ -133,16 +133,13 @@ function extractMediaPathsFromThemeSettings(themeData) {
   const globalSettings = themeData?.settings?.global;
   if (!globalSettings || typeof globalSettings !== "object") return Array.from(mediaPaths);
 
-  function addIfMediaPath(value) {
-    const normalized = normalizeMediaPath(value);
-    if (normalized) mediaPaths.add(normalized);
-  }
-
   Object.values(globalSettings).forEach((items) => {
     if (!Array.isArray(items)) return;
     items.forEach((item) => {
-      if (item.value !== undefined) addIfMediaPath(item.value);
-      else if (item.default !== undefined && typeof item.default === "string") addIfMediaPath(item.default);
+      // Walk the live value (falling back to the schema default), recursing into
+      // arrays/objects via collectMediaPaths so a gallery setting's entry srcs are
+      // tracked exactly like page/global/collection settings already are.
+      collectMediaPaths(item.value !== undefined ? item.value : item.default, mediaPaths);
     });
   });
 

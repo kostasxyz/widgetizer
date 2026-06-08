@@ -102,7 +102,7 @@ A collection type reuses existing setting types (the same ones widgets and `them
 - **`usedAsTitle: true`** — marks the field used as the item's display name in listings and as the source for auto-generated slugs. **Exactly one non-`header` setting must declare this**, and it must be a `text` field.
 - **`required: true`** — enforced on save and on export.
 
-A `gallery`/multi-image field type does not exist yet (the `image` type holds a single value); multi-image data is a deferred item — see "Out of Scope" below.
+For multiple images, use the `gallery` field type — an ordered list of images, each with an optional caption (the `image` type holds a single value). See [Setting Types](theming-setting-types.md). A *generic* repeater (arbitrary repeating blocks) remains deferred — see "Out of Scope".
 
 ### SEO (item pages)
 
@@ -116,7 +116,7 @@ Item-page SEO is **at parity with page SEO** (Finding #12), not a schema-field c
 - `slugPrefix` must be `^[a-z0-9-]+$`; defaults to `type` when omitted.
 - Exactly one non-`header` setting must declare `usedAsTitle: true`, and it must be `type: "text"`.
 - `defaultSort` must be one of the five allowed values (defaults to `manual`).
-- `settings` may only use setting types in `src/components/settings/supportedSettingTypes.js` (`SUPPORTED_SETTING_TYPES`) — the single source of truth shared by the renderer and the backend validator: `header`, `text`, `number`, `textarea`, `richtext`, `code`, `color`, `range`, `select`, `checkbox`, `radio`, `font_picker`, `menu`, `image`, `file`, `link`, `youtube`, `icon`.
+- `settings` may only use setting types in `src/components/settings/supportedSettingTypes.js` (`SUPPORTED_SETTING_TYPES`) — the single source of truth shared by the renderer and the backend validator: `header`, `text`, `number`, `textarea`, `richtext`, `code`, `color`, `range`, `select`, `checkbox`, `radio`, `font_picker`, `menu`, `image`, `gallery`, `file`, `link`, `youtube`, `icon`.
 - `multiple`, `blocks`, repeater, relationship, and taxonomy fields are **rejected**, not silently ignored.
 - Two collections in the same project cannot share a `slugPrefix`; a `slugPrefix` cannot collide with an export-owned root directory (`assets`).
 - At runtime, invalid schemas are **skipped** from the sidebar/API and logged with their folder path. Theme upload **rejects** the whole upload if any schema is invalid.
@@ -382,7 +382,7 @@ Deferred, with the v1 data model already forward-compatible:
 
 - Cross-collection relationships (Portfolio item → Category) — v1 items already carry stable `uuid`s.
 - Taxonomies (categories, tags).
-- Repeater / gallery setting type (removes the single-image limitation).
+- Generic repeater / blocks-in-collections field type. (The `gallery` repeating-image type shipped — see [Setting Types](theming-setting-types.md); only a *generic* repeater remains deferred.)
 - `{% collection ... as items %}` tag form (per-block scoping, cursor pagination).
 - Draft/publish states, per-item undo/redo and autosave. (Live item preview shipped — see §9 "Item preview".)
 - **Forms inside collection templates** — open question, deferred. Interim behavior: item templates should not contain hosted `<form>` markup (the forms manifest scans page widget JSON, not Liquid templates). Authors who need a form on an item page link to a real page that hosts it. Other interactive widgets (sliders, accordions) work fine inside item templates as long as their JS ships via a widget used on at least one page.

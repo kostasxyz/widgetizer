@@ -214,13 +214,27 @@ describe("validateCollectionSchema — setting types", () => {
       validSchema({
         settings: [
           { type: "text", id: "title", label: "Title", usedAsTitle: true },
-          { type: "gallery", id: "gal", label: "Gallery" },
+          { type: "carousel", id: "car", label: "Carousel" },
         ],
       }),
       "portfolio",
     );
     assert.equal(result.valid, false);
-    assert.ok(result.errors.some((e) => /gallery/i.test(e)));
+    assert.ok(result.errors.some((e) => /carousel/i.test(e)));
+  });
+
+  it("accepts the gallery setting type", () => {
+    const result = validateCollectionSchema(
+      validSchema({
+        settings: [
+          { type: "text", id: "title", label: "Title", usedAsTitle: true },
+          { type: "gallery", id: "gallery", label: "Gallery" },
+        ],
+      }),
+      "portfolio",
+    );
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.errors, []);
   });
 
   it("rejects a setting missing an id", () => {

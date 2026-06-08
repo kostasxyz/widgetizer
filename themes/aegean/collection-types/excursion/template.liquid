@@ -155,16 +155,14 @@
             {% endif %}
           </button>
 
-          {% assign has_gallery = false %}
-          {% if item.settings.gallery_1 != blank or item.settings.gallery_2 != blank or item.settings.gallery_3 != blank or item.settings.gallery_4 != blank %}{% assign has_gallery = true %}{% endif %}
-          {% if has_gallery %}
+          {% assign gallery = item.settings.gallery %}
+          {% if gallery.size > 0 %}
             <div class="exc-thumbs">
-              {% for n in (1..4) %}
-                {% assign key = 'gallery_' | append: n %}
-                {% assign gimg = item.settings[key] %}
-                {% if gimg != blank %}
-                  <button type="button" class="exc-thumb" data-lightbox="exc-{{ item.slug }}" data-lightbox-src="{% image src: gimg, size: 'hero', output: 'url' %}" aria-label="View photo {{ n }}">
-                    {% image src: gimg, size: 'small', alt: item.settings.title %}
+              {% for img in gallery %}
+                {% if img.src != blank %}
+                  {% assign thumb_alt = img.caption | default: item.settings.title %}
+                  <button type="button" class="exc-thumb" data-lightbox="exc-{{ item.slug }}" data-lightbox-src="{% image src: img.src, size: 'hero', output: 'url' %}" aria-label="View photo {{ forloop.index }}">
+                    {% image src: img.src, size: 'small', alt: thumb_alt %}
                   </button>
                 {% endif %}
               {% endfor %}

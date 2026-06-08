@@ -37,10 +37,7 @@
     { "type": "text", "id": "view", "label": "View", "default": "Caldera & sea view" },
 
     { "type": "header", "id": "gallery_header", "label": "Gallery" },
-    { "type": "image", "id": "gallery_1", "label": "Gallery image 1" },
-    { "type": "image", "id": "gallery_2", "label": "Gallery image 2" },
-    { "type": "image", "id": "gallery_3", "label": "Gallery image 3" },
-    { "type": "image", "id": "gallery_4", "label": "Gallery image 4" },
+    { "type": "gallery", "id": "gallery", "label": "Images" },
 
     { "type": "header", "id": "amenities_header", "label": "Amenities" },
     { "type": "checkbox", "id": "amenity_sea_view", "label": "Sea view", "default": true },

@@ -74,6 +74,26 @@ beforeEach(async () => {
   await fs.remove(path.join(getProjectDir(PROJECT_FOLDER), "collections"));
 });
 
+// ============================================================================
+// extractMediaPathsFromCollectionItem — gallery (array-of-objects) walking
+// ============================================================================
+
+describe("extractMediaPathsFromCollectionItem — gallery", () => {
+  it("extracts each gallery entry's upload src and skips blank ones", () => {
+    const item = {
+      settings: {
+        gallery: [
+          { src: "/uploads/images/hero.jpg", caption: "A" },
+          { src: "/uploads/images/other.jpg", caption: "" },
+          { src: "", caption: "blank row, no src" },
+        ],
+      },
+    };
+    const paths = extractMediaPathsFromCollectionItem(item).sort();
+    assert.deepEqual(paths, ["/uploads/images/hero.jpg", "/uploads/images/other.jpg"]);
+  });
+});
+
 describe("extractMediaPathsFromCollectionItem", () => {
   it("finds image, file, and nested link-href upload paths in settings", () => {
     const item = {

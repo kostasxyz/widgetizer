@@ -144,6 +144,77 @@ describe("normalizeCollectionItem", () => {
 });
 
 // ============================================================================
+// gallery field — defaults & required (normalize + build)
+// ============================================================================
+
+describe("gallery field", () => {
+  const requiredGallerySchema = () =>
+    portfolioSchema({
+      settings: [
+        { type: "text", id: "title", label: "Title", required: true, usedAsTitle: true },
+        { type: "gallery", id: "gallery", label: "Gallery", required: true },
+      ],
+    });
+
+  it("normalizeCollectionItem fills a missing gallery to []", () => {
+    const schema = portfolioSchema({
+      settings: [
+        { type: "text", id: "title", label: "Title", required: true, usedAsTitle: true },
+        { type: "gallery", id: "gallery", label: "Gallery" }, // optional
+      ],
+    });
+    const n = normalizeCollectionItem(itemFile("alpha", { settings: { title: "Alpha" } }), schema);
+    assert.deepEqual(n.settings.gallery, []);
+    assert.equal(n.invalid, false);
+  });
+
+  it("normalizeCollectionItem flags a required gallery that is empty or has no valid src", () => {
+    const schema = requiredGallerySchema();
+    const empty = normalizeCollectionItem(itemFile("a", { settings: { title: "A", gallery: [] } }), schema);
+    assert.equal(empty.invalid, true);
+    assert.ok(empty.validationErrors.some((e) => e.fieldId === "gallery"));
+
+    const blank = normalizeCollectionItem(
+      itemFile("b", { settings: { title: "B", gallery: [{ src: "", caption: "x" }] } }),
+      schema,
+    );
+    assert.equal(blank.invalid, true);
+
+    const bad = normalizeCollectionItem(
+      itemFile("c", { settings: { title: "C", gallery: [{ src: "javascript:alert(1)" }] } }),
+      schema,
+    );
+    assert.equal(bad.invalid, true);
+  });
+
+  it("normalizeCollectionItem accepts a required gallery with at least one valid upload src", () => {
+    const n = normalizeCollectionItem(
+      itemFile("d", { settings: { title: "D", gallery: [{ src: "/uploads/images/x.jpg", caption: "x" }] } }),
+      requiredGallerySchema(),
+    );
+    assert.equal(n.invalid, false);
+    assert.deepEqual(n.validationErrors, []);
+  });
+
+  it("buildCollectionItemData throws when a required gallery has no valid src", () => {
+    const schema = requiredGallerySchema();
+    assert.throws(
+      () => buildCollectionItemData(schema, { slug: "x", settings: { title: "X", gallery: [{ src: "" }] } }),
+      (err) => err.name === "CollectionValidationError",
+    );
+  });
+
+  it("buildCollectionItemData succeeds and stores the gallery when a valid src is present", () => {
+    const schema = requiredGallerySchema();
+    const { item } = buildCollectionItemData(schema, {
+      slug: "y",
+      settings: { title: "Y", gallery: [{ src: "/uploads/images/y.jpg", caption: "c" }] },
+    });
+    assert.deepEqual(item.settings.gallery, [{ src: "/uploads/images/y.jpg", caption: "c" }]);
+  });
+});
+
+// ============================================================================
 // listCollectionItems
 // ============================================================================
 

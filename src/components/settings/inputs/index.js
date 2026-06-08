@@ -4,6 +4,7 @@ export { default as ColorInput } from "./ColorInput";
 export { default as FileInput } from "./FileInput";
 export { default as FontPickerInput } from "./FontPickerInput";
 export { default as ImageInput } from "./ImageInput";
+export { default as GalleryInput } from "./GalleryInput";
 export { default as MenuSelectInput } from "./MenuSelectInput";
 export { default as RadioInput } from "./RadioInput";
 export { default as RangeInput } from "./RangeInput";

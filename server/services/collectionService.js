@@ -22,7 +22,7 @@ import { isSupportedSettingType } from "../../src/components/settings/supportedS
 import { isAtomicTmpFile, writeJsonAtomic } from "../utils/atomicFs.js";
 import { sanitizeSlug, generateUniqueSlug } from "../utils/slugHelpers.js";
 import { prefixInternalHref } from "../utils/linkPrefixer.js";
-import { sanitizeCollectionItemData, stripHtmlTags } from "./sanitizationService.js";
+import { sanitizeCollectionItemData, sanitizeImagePath, stripHtmlTags } from "./sanitizationService.js";
 import { resolveMenuSettings } from "./menuResolver.js";
 
 const SLUG_RE = /^[a-z0-9-]+$/;
@@ -276,6 +276,8 @@ function emptyDefaultForType(type) {
       return 0;
     case "link":
       return { href: "", target: "_self" };
+    case "gallery":
+      return [];
     default:
       return "";
   }
@@ -283,6 +285,13 @@ function emptyDefaultForType(type) {
 
 /** Whether a required field's value should count as missing (flags invalid). */
 function isMissingValue(value, type) {
+  if (type === "gallery") {
+    // Missing unless at least one entry has a valid upload-path src. Reuses the
+    // sanitizer's sanitizeImagePath so "valid src" is consistent across
+    // validation and sanitization: a blank or non-upload src (javascript:, ../)
+    // does not count as present. Runs on raw data (this path never sanitizes).
+    return !Array.isArray(value) || !value.some((e) => e && sanitizeImagePath(e.src) !== "");
+  }
   if (type === "link") {
     return !value || typeof value.href !== "string" || value.href.trim() === "";
   }

@@ -15,6 +15,7 @@ import {
   FontPickerInput,
   MenuSelectInput,
   ImageInput,
+  GalleryInput,
   LinkInput,
   YouTubeInput,
   IconInput,
@@ -103,6 +104,8 @@ export default function SettingsRenderer({ setting, value, onChange, error, allo
         const imageSize = size || (compact ? "narrow" : "full");
         return <ImageInput {...inputProps} size={imageSize} />;
       }
+      case "gallery":
+        return <GalleryInput {...inputProps} />;
       case "file":
         return <FileInput {...inputProps} />;
       case "link":

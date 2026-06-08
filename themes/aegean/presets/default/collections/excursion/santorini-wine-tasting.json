@@ -19,10 +19,12 @@
     "meeting_point": "Resort reception",
     "languages": "English, Greek, French",
     "season": "All year",
-    "gallery_1": "/uploads/images/aegean-08.jpg",
-    "gallery_2": "/uploads/images/aegean-02.jpg",
-    "gallery_3": "/uploads/images/aegean-09.jpg",
-    "gallery_4": "/uploads/images/aegean-07.jpg",
+    "gallery": [
+      { "src": "/uploads/images/aegean-08.jpg", "caption": "" },
+      { "src": "/uploads/images/aegean-02.jpg", "caption": "" },
+      { "src": "/uploads/images/aegean-09.jpg", "caption": "" },
+      { "src": "/uploads/images/aegean-07.jpg", "caption": "" }
+    ],
     "itinerary": "15:00 · Pickup | Air-conditioned transfer from the resort\n15:30 · First winery | Assyrtiko tasting with caldera views\n17:00 · Second winery | Cellar tour and barrel tasting\n18:30 · Third winery | Vinsanto and mezze at sunset",
     "incl_hotel_pickup": true,
     "incl_guide": true,

@@ -54,6 +54,43 @@ function sanitizeLink(linkObj) {
 }
 
 /**
+ * Keep only safe in-project upload image paths; blank anything else.
+ * Gallery srcs (and any future strict image-path checks) run through this so
+ * "valid image path" means the identical thing in sanitization and in
+ * collection required-field validation (collectionService imports it).
+ * NOTE: not applied to plain `image` settings — theme `image` defaults may be
+ * non-upload theme assets (e.g. /default-logo.png) this would wrongly blank.
+ * @param {*} value - candidate image path
+ * @returns {string} the path if it is a safe /uploads/images/ path, else ""
+ */
+export function sanitizeImagePath(value) {
+  if (typeof value !== "string") return "";
+  const v = value.trim();
+  return v.startsWith("/uploads/images/") && !v.includes("..") ? v : "";
+}
+
+/**
+ * Sanitize a `gallery` value: an ordered array of { src, caption } entries.
+ * - src: kept only if it is a safe upload image path; entries whose src does not
+ *   survive are dropped, so render never emits empty figures and a gallery of
+ *   only blank rows collapses to [].
+ * - caption: plain text (rendered via Liquid autoescape); tag-stripped for cleanliness.
+ * Non-array / malformed input normalizes to []. Shared by the widget/collection
+ * sanitizer and the theme-settings sanitizer so all three behave identically.
+ * @param {*} value
+ * @returns {Array<{src: string, caption: string}>}
+ */
+function sanitizeGalleryValue(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => ({
+      src: sanitizeImagePath(entry?.src),
+      caption: stripHtmlTags(typeof entry?.caption === "string" ? entry.caption : ""),
+    }))
+    .filter((entry) => entry.src !== "");
+}
+
+/**
  * Sanitize a single setting value based on its schema-declared type.
  * Only richtext and link types need active sanitization:
  * - richtext: DOMPurify strips dangerous HTML (output via | raw in templates)
@@ -65,6 +102,9 @@ function sanitizeLink(linkObj) {
  * @returns {*} Sanitized value
  */
 function sanitizeSettingValue(value, type) {
+  // gallery is handled before the null guard so a null/undefined value still
+  // normalizes to [] (sanitizeGalleryValue maps non-arrays to []).
+  if (type === "gallery") return sanitizeGalleryValue(value);
   if (value == null) return value;
 
   switch (type) {
@@ -165,6 +205,12 @@ function validateFontPicker(value) {
  * @returns {{ value: *, corrected: boolean }} Validated/sanitized value and whether it was corrected
  */
 function sanitizeThemeSettingValue(value, schema) {
+  // gallery is handled before the null guard so a null/undefined value still
+  // normalizes to [] (parity with the widget/collection sanitizer).
+  if (schema.type === "gallery") {
+    const sanitized = sanitizeGalleryValue(value);
+    return { value: sanitized, corrected: JSON.stringify(sanitized) !== JSON.stringify(value) };
+  }
   if (value === undefined || value === null) return { value, corrected: false };
 
   let sanitized;

@@ -21,6 +21,7 @@ import {
   stripHtmlTags,
   sanitizeCssValue,
   sanitizeThemeSettings,
+  sanitizeImagePath,
 } from "../services/sanitizationService.js";
 
 // ============================================================================
@@ -786,6 +787,112 @@ describe("sanitizeCollectionItemData", () => {
     sanitizeCollectionItemData({ settings: { description: null } }, schema);
     sanitizeCollectionItemData({ settings: { description: "<p>x</p>" } }, null);
     assert.ok(true);
+  });
+});
+
+// ============================================================================
+// sanitizeImagePath — reusable upload-image-path guard (shared by gallery)
+// ============================================================================
+
+describe("sanitizeImagePath", () => {
+  it("keeps a valid /uploads/images/ path", () => {
+    assert.equal(sanitizeImagePath("/uploads/images/photo.jpg"), "/uploads/images/photo.jpg");
+  });
+
+  it("trims surrounding whitespace", () => {
+    assert.equal(sanitizeImagePath("  /uploads/images/photo.jpg  "), "/uploads/images/photo.jpg");
+  });
+
+  it("blanks dangerous, external, or non-upload strings", () => {
+    assert.equal(sanitizeImagePath("javascript:alert(1)"), "");
+    assert.equal(sanitizeImagePath("https://evil.example/x.jpg"), "");
+    assert.equal(sanitizeImagePath("/uploads/images/../../etc/passwd"), "");
+    assert.equal(sanitizeImagePath("/uploads/files/doc.pdf"), ""); // files aren't images
+    assert.equal(sanitizeImagePath("/default-logo.png"), ""); // theme asset, not an upload
+  });
+
+  it("blanks non-string input", () => {
+    assert.equal(sanitizeImagePath(null), "");
+    assert.equal(sanitizeImagePath(undefined), "");
+    assert.equal(sanitizeImagePath(42), "");
+    assert.equal(sanitizeImagePath({ src: "x" }), "");
+  });
+});
+
+// ============================================================================
+// gallery sanitization — via the exported entry points (the switch helpers are
+// private). Same rule everywhere: drop blank/invalid-src rows, strip caption HTML,
+// normalize non-array (incl. null/undefined) to [].
+// ============================================================================
+
+describe("gallery sanitization", () => {
+  const widgetSchema = { settings: [{ id: "gallery", type: "gallery" }], blocks: [] };
+
+  it("keeps valid upload srcs, drops blank/invalid rows, strips caption HTML (widget)", () => {
+    const data = {
+      settings: {
+        gallery: [
+          { src: "/uploads/images/a.jpg", caption: "Bay <b>at dusk</b>" },
+          { src: "javascript:alert(1)", caption: "evil" },
+          { src: "../../etc/passwd", caption: "traversal" },
+          { src: "https://evil.example/x.jpg", caption: "external" },
+          { src: "", caption: "blank" },
+        ],
+      },
+    };
+    sanitizeWidgetData(data, widgetSchema);
+    assert.deepEqual(data.settings.gallery, [{ src: "/uploads/images/a.jpg", caption: "Bay at dusk" }]);
+  });
+
+  it("normalizes a non-array gallery to [] (widget)", () => {
+    const data = { settings: { gallery: "not-an-array" } };
+    sanitizeWidgetData(data, widgetSchema);
+    assert.deepEqual(data.settings.gallery, []);
+  });
+
+  it("normalizes a null/undefined gallery to [] — handled before the null guard (widget)", () => {
+    const d1 = { settings: { gallery: null } };
+    const d2 = { settings: { gallery: undefined } };
+    sanitizeWidgetData(d1, widgetSchema);
+    sanitizeWidgetData(d2, widgetSchema);
+    assert.deepEqual(d1.settings.gallery, []);
+    assert.deepEqual(d2.settings.gallery, []);
+  });
+
+  it("sanitizes a gallery in a collection item", () => {
+    const item = {
+      settings: {
+        gallery: [
+          { src: "/uploads/images/room.jpg", caption: "Suite <b>deluxe</b>" },
+          { src: "data:text/html,<script>x</script>", caption: "bad" },
+        ],
+      },
+    };
+    sanitizeCollectionItemData(item, { settings: [{ id: "gallery", type: "gallery" }] });
+    assert.deepEqual(item.settings.gallery, [{ src: "/uploads/images/room.jpg", caption: "Suite deluxe" }]);
+  });
+
+  it("sanitizes a gallery value in theme settings (and does not mutate the input)", () => {
+    const themeData = {
+      settings: {
+        global: {
+          media: [
+            {
+              type: "gallery",
+              id: "showcase",
+              value: [
+                { src: "/uploads/images/t.jpg", caption: "<i>hi</i>" },
+                { src: "javascript:alert(1)", caption: "x" },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const { data } = sanitizeThemeSettings(themeData);
+    assert.deepEqual(data.settings.global.media[0].value, [{ src: "/uploads/images/t.jpg", caption: "hi" }]);
+    // input untouched (sanitizeThemeSettings clones)
+    assert.equal(themeData.settings.global.media[0].value.length, 2);
   });
 });
 

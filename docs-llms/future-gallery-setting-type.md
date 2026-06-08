@@ -1,9 +1,11 @@
 # Future: `gallery` setting type (repeating image + caption)
 
-> **Status: 📋 Planned (not implemented).** Design/approach doc for a repeating-image
-> setting type. Supersedes the "repeater / gallery setting type" line in
-> `core-collections.md` → §11 Out of Scope and the `theming-setting-types.md` note
-> that a multi-image type does not exist yet.
+> **Status: ✅ Implemented.** Shipped as the `gallery` setting type: registration,
+> sanitization (`sanitizeImagePath` + `sanitizeGalleryValue`), collection
+> defaults/required, theme media-usage, `GalleryInput`, and the Aegean migration (§8).
+> This doc is retained as the design/rationale record; the author-facing reference now
+> lives in `theming-setting-types.md`, and the `core-collections.md` §11 out-of-scope
+> line has been removed.
 
 ## 1. Motivation
 
@@ -69,32 +71,192 @@ list, so the existing rejection of ad-hoc repeaters is unchanged.
 **`SettingsRenderer.jsx`** — add a `case "gallery"` branch dispatching to
 `GalleryInput`, wrapped in `SettingsField` like the others (label/required/description).
 
+**Wiring (easy to miss):**
+- **Barrel export + import.** `SettingsRenderer` imports its inputs from the barrel
+  ([`src/components/settings/inputs/index.js`](src/components/settings/inputs/index.js)),
+  not by direct path. Add `export { default as GalleryInput } from "./GalleryInput";`
+  to that file, then add `GalleryInput` to the destructured `from "./inputs"` import
+  block at the top of `SettingsRenderer.jsx`. Without the export the `case "gallery"`
+  branch references an undefined component.
+- **Unique per-row id.** `ImageInput` binds the schema `id` to its hidden
+  `<input type="file">` ([`ImageInput.jsx`](src/components/settings/inputs/ImageInput.jsx) line 147).
+  If `GalleryInput` reuses that machinery (whether by composing `ImageInput` directly
+  or via the factored-out sub-component), N rows sharing one `id` collide — the file
+  pickers and label associations break. Give each entry a **stable client-side key** (a
+  generated uid held in component state) and use it for the `@dnd-kit` sortable id, the
+  React `key`, **and** the per-row file-input id. Don't key on `src` or the array index:
+  `src` can be empty or duplicated across rows, and the index changes on reorder.
+
 ## 5. Backend
 
-**Validation** ([`collectionService.js`](server/services/collectionService.js)
-`validateCollectionSchema`): `gallery` is accepted once it's in
-`SUPPORTED_SETTING_TYPES`. No schema-level field config is required; optionally
-support `max` (cap entries) later. The empty-value/placeholder helper returns `[]`.
+`gallery` touches **three** backend concerns — schema validation/defaults, value
+sanitization, and media-usage tracking. Each currently assumes scalar (or single-object)
+values; each needs a small, localized array-aware addition. The notes below are
+reconciled against the current code (line refs included) because several existing
+helpers do **not** behave the way the earlier draft of this doc assumed.
 
-**Sanitization** ([`sanitizationService.js`](server/services/sanitizationService.js)
-`sanitizeCollectionItemData` / `sanitizeWidgetData`): add a `gallery` rule that maps
-the array, coercing each entry to `{ src, caption }`:
-- `src` — keep only valid upload paths (same check `image` uses); drop/blank anything
-  else (defense against injected non-upload strings).
-- `caption` — treat as plain text. It renders through Liquid autoescape (`{{ img.caption }}`),
-  so HTML can't execute; additionally `stripHtmlTags` it for cleanliness, matching `text`/`textarea`.
-- Non-array / malformed values normalize to `[]`. Sanitize-after-resolve still holds
-  (galleries carry no links, so `resolveCollectionItemLinks` passes them through; the
-  render gate `prepareCollectionItemForRender` then sanitizes).
+### 5.1 Validation, empty defaults, and required handling
 
-**Media usage** ([`mediaUsageService.js`](server/services/mediaUsageService.js)): the
-`extractFromSettings` walkers (page widgets, global widgets, theme settings, and the
-collection-item extractor) currently handle string paths and recurse into single
-objects (link settings). Extend them to **walk arrays**: for a `gallery` value, pull
-the `/uploads/images/...` path from each entry's `src`. This makes every gallery image
-show "Used in" and keeps usage counts correct on add/remove/delete — covered by the
-same `refreshMediaUsageAfterStructuralChange` / per-write sync paths collections
-already use.
+**Schema validation** ([`collectionService.js`](server/services/collectionService.js)
+`validateCollectionSchema`, line 42): each field's `type` is only checked for membership
+in `SUPPORTED_SETTING_TYPES` via `isSupportedSettingType` (line 75). Once `"gallery"` is
+in that list (§3) the validator accepts it with **no further change**. It performs no
+`src` inspection — `src` integrity is a *sanitizer* concern (§5.2), not schema
+validation. (This split matters for the tests — see §9.) Optionally support `max` (cap
+entries) later.
+
+**Empty / placeholder default** (`emptyDefaultForType`, line 270): add
+`case "gallery": return [];`. The current `default` branch returns `""`, so a gallery
+with no schema default would be seeded as an empty **string** and break the array
+contract. `normalizeCollectionItem` uses this helper to fill a missing `gallery` to `[]`
+(§7).
+
+**Required-field validation** (`isMissingValue`, line 285): add a gallery branch. Note
+it must check for **at least one entry with a real `src`**, not just array length — a row
+with a blank/invalid `src` is not a real image:
+
+```js
+if (type === "gallery") {
+  return !Array.isArray(value) || !value.some((e) => e && sanitizeImagePath(e.src) !== "");
+}
+```
+
+Reuse the **same `sanitizeImagePath` helper** from §5.2 (import it into `collectionService.js`,
+which already imports from `sanitizationService.js` at line 25) so "valid `src`" means the
+identical thing in validation and sanitization. A bare `e.src.trim() !== ""` check is not
+enough — it would treat `[{ "src": "javascript:alert(1)" }]` or `[{ "src": "../../etc/passwd" }]`
+as *present*, contradicting the "blank **or invalid** `src` rows don't count" rule.
+
+A plain `value.length === 0` check would also be wrong: `isMissingValue` runs on **raw,
+un-sanitized item data** inside `normalizeCollectionItem` (line 368) and the write path
+`buildCollectionItemData` (line 643), and that pipeline never runs the sanitizer (the
+sanitizer only runs at render, in `prepareCollectionItemForRender` — §5.2). So a stored
+`[{ "src": "", "caption": "x" }]` would otherwise count as length 1 → *present*, even
+though it has no image. The `some((e) => sanitizeImagePath(e.src) !== "")` check is the
+authoritative rule.
+
+The frontend's [`CollectionItemForm.jsx`](src/components/collections/CollectionItemForm.jsx)
+`isMissingValue` (line 21) is generic and gallery-unaware — its array branch is just
+`value.length === 0`, and its comment claims it "Mirrors the backend rule." To keep the two
+aligned for legitimately-authored data, `GalleryInput` should **not commit blank-`src`
+rows**: a freshly-added row stays editor-local until an image is chosen, and empty rows are
+stripped from the value it emits. Then a truly-empty gallery has `length === 0` on the
+frontend too, while the backend's `src`-aware check remains the source of truth for
+hand-edited/imported JSON.
+
+> **Widgets and theme settings have no `normalizeCollectionItem` equivalent**, so their
+> gallery value comes straight from the stored value or the schema `default`. To keep
+> them robust, `GalleryInput` must coerce a non-array / `undefined` `value` to `[]`
+> (`SettingsRenderer` passes `setting.default`, which may be unset). Asking authors to
+> set `"default": []` is good hygiene but not sufficient on its own — the input-side
+> normalization is the real guard.
+
+### 5.2 Sanitization (three call sites, one shared rule)
+
+There are **three** sanitizers, not two — the earlier draft named only the first two:
+
+- widget settings → `sanitizeWidgetData` → `sanitizeSettingValue` (line 67)
+- collection-item settings → `sanitizeCollectionItemData` → `sanitizeSettingValue` (line 67)
+- **theme settings → `sanitizeThemeSettingValue` (line 167)** — a *separate* switch. This
+  is the path the "works in theme schemas" claim (§1) depends on; with no case here a
+  theme `gallery` value is returned untouched.
+
+> **Theme *defaults* are intentionally not sanitized.** `sanitizeThemeSettings` only runs
+> `sanitizeThemeSettingValue` on entries where `item.value !== undefined` (line 243) — it
+> never touches `item.default`, and that is true for **every** setting type, not just
+> gallery. So an author-shipped gallery `default` in `theme.json` is the author's
+> responsibility (theme-upload validation is the gate for author content) and isn't run
+> through `sanitizeGalleryValue` until the user sets a value. Keep gallery consistent with
+> this — don't special-case it to sanitize defaults.
+
+Add a `gallery` branch to **both** switches (`sanitizeSettingValue` and
+`sanitizeThemeSettingValue`), delegating to one shared helper so all three call sites
+behave identically. The helper **filters out** entries whose `src` doesn't survive the
+upload-path check — rather than keeping them as `{ src: "" }` — so render never emits empty
+figures and a gallery of only blank rows collapses to `[]`:
+
+```js
+function sanitizeGalleryValue(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => ({
+      src: sanitizeImagePath(entry?.src),
+      caption: stripHtmlTags(typeof entry?.caption === "string" ? entry.caption : ""),
+    }))
+    .filter((entry) => entry.src !== ""); // drop rows with no valid image
+}
+```
+
+> **Mind the early `null` guard.** Both `sanitizeSettingValue` (line 68: `if (value == null) return value;`)
+> and `sanitizeThemeSettingValue` (line 168) return **before** their `switch`. A literal
+> `null` / `undefined` gallery would therefore skip the branch and stay `null`, contradicting
+> "non-array → `[]`". Handle `gallery` **before** the null guard — e.g.
+> `if (type === "gallery") return sanitizeGalleryValue(value);` at the top of
+> `sanitizeSettingValue` — so `sanitizeGalleryValue` (which already maps `null` → `[]`) always
+> runs. Do the same in `sanitizeThemeSettingValue`, wrapping the result in its
+> `{ value, corrected }` shape.
+
+- **`src` needs a real upload-path check.** The earlier draft said "same check `image`
+  uses" — but `image` is **not** sanitized today. In `sanitizeSettingValue` it falls to
+  `default: return value` (no check at all); in `sanitizeThemeSettingValue` it only gets a
+  `typeof === "string"` guard (line 206). Neither validates the path. Add a reusable
+  helper:
+
+  ```js
+  /** Keep only safe in-project upload image paths; blank anything else. */
+  export function sanitizeImagePath(value) {
+    if (typeof value !== "string") return "";
+    const v = value.trim();
+    return v.startsWith("/uploads/images/") && !v.includes("..") ? v : "";
+  }
+  ```
+
+  Gallery images are always library uploads — `ImageInput`'s `onChange` only ever emits a
+  media-record path under `/uploads/images/` — so this prefix check is exactly right for
+  `gallery.src`.
+
+  **Caveat on reusing it for plain `image`:** a plain `image` *theme* setting may
+  legitimately default to a non-upload theme asset (e.g. `"default": "/default-logo.png"`).
+  The strict `/uploads/images/` check would blank those. So either (a) apply
+  `sanitizeImagePath` only to `gallery.src` for now, or (b) first broaden the helper to
+  also allow theme-relative asset paths before wiring it into the plain-`image` path. The
+  feedback's "ideally for plain image too" is correct in spirit but must not silently drop
+  legitimate theme defaults.
+
+- **`caption` is plain text.** It renders via Liquid autoescape (`{{ img.caption }}`), so
+  it is XSS-safe with no transform — the same way `text`/`textarea` are handled (autoescape,
+  no DOMPurify pass; note those are **not** tag-stripped in `sanitizeSettingValue` either).
+  The `stripHtmlTags` call above is an optional storage-cleanliness extra, **not** a
+  security requirement and not "parity with text/textarea."
+
+- **Non-array / malformed → `[]`.** Sanitize-after-resolve still holds (galleries carry no
+  links, so `resolveCollectionItemLinks` passes them through; the render gate
+  `prepareCollectionItemForRender` then sanitizes).
+
+### 5.3 Media-usage tracking
+
+The earlier draft said the page/global/theme/collection walkers "currently handle string
+paths and recurse into single objects … extend them to walk arrays." That is
+**inaccurate** and overstates the work:
+
+- **Page widgets, global widgets, and collection items already recurse arrays.** They
+  funnel every settings value through `collectMediaPaths`
+  ([`mediaUsageService.js`](server/services/mediaUsageService.js) line 27), which already
+  handles strings, plain objects, **and arrays**. A `gallery` array's `src` paths are
+  picked up here with **no change**.
+- **Theme settings is the one real gap.** `extractMediaPathsFromThemeSettings` (line 131)
+  does **not** use `collectMediaPaths`; it inspects only scalar `item.value` / `item.default`
+  via `addIfMediaPath`, so a `gallery` theme setting's images would never be tracked. Fix:
+  route the setting's value through `collectMediaPaths` (or otherwise walk the array) so
+  theme gallery images get "Used in" and correct counts. Apply the same to the **`default`
+  fallback**: today it tracks a default only when `typeof item.default === "string"` (line
+  145), so an author-shipped gallery `default` *array* would be skipped even though scalar
+  image defaults are tracked — route the `item.default` fallback through `collectMediaPaths`
+  too, for parity. (Note this is media *tracking* only; defaults are still not *sanitized* —
+  see §5.2.)
+
+Usage then stays correct on add/remove/delete through the existing
+`refreshMediaUsageAfterStructuralChange` / per-write sync paths collections already use.
 
 ## 6. Rendering (Liquid)
 
@@ -102,12 +264,18 @@ No new tag needed — the array is plain iterable data. A theme template loops i
 
 ```liquid
 {% for img in item.settings.gallery %}
-  <figure>
-    {% image src: img.src, size: 'large' %}
-    {% if img.caption != blank %}<figcaption>{{ img.caption }}</figcaption>{% endif %}
-  </figure>
+  {% if img.src != blank %}
+    <figure>
+      {% image src: img.src, size: 'large' %}
+      {% if img.caption != blank %}<figcaption>{{ img.caption }}</figcaption>{% endif %}
+    </figure>
+  {% endif %}
 {% endfor %}
 ```
+
+The `{% if img.src != blank %}` guard is defensive: the sanitizer already filters blank-`src`
+rows (§5.2), but theme templates should never assume that and risk emitting an empty
+`<figure>` if a row slips through.
 
 `{% image %}` resolves `img.src` (depth-aware path + media metadata for alt) exactly as
 it does for a single `image`. `{{ img.caption }}` is autoescaped. The array passes
@@ -121,9 +289,12 @@ neither a link nor a menu value).
   (BLOCKER-2) already preserves out-of-schema keys, so swapping a schema to `gallery`
   never silently drops the old fixed-field data — it surfaces as "Leftover content".
 - **Link/menu resolution**: untouched — `gallery` entries have no `href`/menu UUID.
-- This is the first repeater-shaped value; keep the array handling **localized** to the
-  three extension points (sanitizer, media-usage walker, the input) so the rest of the
-  flat-settings assumptions stay valid.
+- This is the first repeater-shaped value; keep the array handling **localized** to a
+  small set of extension points so the rest of the flat-settings assumptions stay valid:
+  the shared sanitizer (`sanitizeGalleryValue`, wired into both `sanitizeSettingValue` and
+  `sanitizeThemeSettingValue`), the theme-settings media-usage walker
+  (`extractMediaPathsFromThemeSettings` — the other walkers already recurse arrays), the
+  collection `emptyDefaultForType` / `isMissingValue` helpers, and `GalleryInput`.
 
 ## 8. Aegean migration (ships with the feature)
 
@@ -136,14 +307,41 @@ neither a link nor a menu value).
    content"). These are theme sample items, so it's a content edit, not a runtime
    migration.
 
+> **As shipped:** the `excursion` collection type used the identical `gallery_1..4`
+> fake-gallery pattern, so it was migrated alongside `accommodation` (schema, template,
+> and its three preset items) to avoid leaving the theme half-converted. The
+> `gallery_header` section divider was **kept** — every other field group in these
+> schemas has one — so each schema now reads `gallery_header` + a single
+> `{ "type": "gallery", "id": "gallery", "label": "Images" }` field, rather than dropping
+> the header as step 1 originally suggested. Captions ship empty (a faithful
+> restructure of the old caption-less slots; authors can fill them in).
+
 ## 9. Tests
 
-- Validator accepts a `gallery` field; rejects a bogus `src`.
-- `sanitizeCollectionItemData`/`sanitizeWidgetData`: array of mixed-valid entries →
-  cleaned `{ src, caption }[]`; non-array → `[]`; caption HTML stripped.
-- Media usage: a 3-image gallery marks 3 files "used in"; removing one updates the count.
-- Collection render / `| collection` filter: a gallery round-trips and the loop emits
-  `src` + caption.
+- **Schema validation** (`validateCollectionSchema`) accepts a field with
+  `type: "gallery"` once it's in `SUPPORTED_SETTING_TYPES`; it does **no** `src` validation.
+  (Keep this test about schema acceptance only — bogus `src` is a sanitizer concern, not
+  schema validation. Conflating the two was the wording bug in the earlier draft.)
+- **Sanitization** — drive these through the **exported** entry points, not the private
+  switch helpers: `sanitizeWidgetData` (widgets), `sanitizeCollectionItemData` (collection
+  items), and `sanitizeThemeSettings` (theme — pass a `theme.json`-shaped object with a
+  gallery item under `settings.global.<group>` carrying a `value`). `sanitizeSettingValue` /
+  `sanitizeThemeSettingValue` are not exported and can't be imported. Assert: an array of
+  mixed entries → cleaned `{ src, caption }[]` with non-upload / bogus `src`
+  (`"javascript:…"`, `"../../etc/passwd"`, an external URL) **rows dropped**; a non-array
+  value → `[]`; a `null` / `undefined` value → `[]` (exercises the pre-`switch` guard fix);
+  caption HTML stripped.
+- **Defaults & required** — exercise through the **exported** `normalizeCollectionItem`
+  (read) and `buildCollectionItemData` (write), not the private `emptyDefaultForType` /
+  `isMissingValue`: a missing `gallery` fills to `[]`; a `required` gallery flags invalid
+  when it is `[]` **and** when it holds only blank- or invalid-`src` rows (e.g.
+  `[{ "src": "javascript:alert(1)" }]`, `[{ "src": "../../etc/passwd" }]`), but is valid
+  with at least one upload-path `src`.
+- **Media usage** — a 3-image gallery marks 3 files "used in" and removing one updates the
+  count, exercised both for a gallery in a **collection item / widget** *and* in a **theme
+  setting** (the theme-settings extractor is the path that newly has to walk the array).
+- **Render** — collection render / `| collection` filter: a gallery round-trips and the
+  `{% for %}` loop emits `src` + caption.
 - Frontend has no component-test tooling; `GalleryInput` is lint + manual.
 
 ## 10. Out of scope (later)
