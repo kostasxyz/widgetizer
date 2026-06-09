@@ -53,20 +53,54 @@ function sanitizeLink(linkObj) {
   return sanitized;
 }
 
+// Characters legal in an in-project image path. This is a strict ALLOWLIST, not a blocklist,
+// because the value reaches an HTML sink: the {% image %} tag falls back to a RAW
+// `<img src="...">` with the value's basename UNescaped (src/core/tags/imageTag.js), so any
+// quote, `<`, `>`, whitespace, backslash, `:` or control char must never survive — otherwise a
+// value like `/uploads/images/x" onerror="alert(1).jpg` breaks out of the src attribute (XSS).
+// Upload filenames are `slugify(strict)` → `[a-z0-9-]` + extension, so this never blanks a real
+// upload; it also covers theme asset paths like `/assets/logo.svg`.
+const SAFE_IMAGE_PATH_RE = /^\/[A-Za-z0-9._/-]+$/;
+
 /**
- * Keep only safe in-project upload image paths; blank anything else.
- * Gallery srcs (and any future strict image-path checks) run through this so
- * "valid image path" means the identical thing in sanitization and in
- * collection required-field validation (collectionService imports it).
- * NOTE: not applied to plain `image` settings — theme `image` defaults may be
- * non-upload theme assets (e.g. /default-logo.png) this would wrongly blank.
+ * Whether a trimmed string is a safe in-project image path: a single leading slash, only
+ * allowlisted path characters, no protocol-relative `//host`, and no parent traversal `..`.
+ * Shared by both image-path guards so "safe path" means exactly one thing.
+ * @param {string} v - already-trimmed candidate
+ * @returns {boolean}
+ */
+function isSafeImagePath(v) {
+  return SAFE_IMAGE_PATH_RE.test(v) && !v.startsWith("//") && !v.includes("..");
+}
+
+/**
+ * Keep only safe in-project UPLOAD image paths (`/uploads/images/...`); blank anything else.
+ * Strict by design: every gallery entry is a library upload, so gallery srcs run through this,
+ * and collection required-field validation imports it. For a plain `image` setting (which may
+ * legitimately point at a non-upload theme asset), use the broader `sanitizeImageSettingValue`.
  * @param {*} value - candidate image path
  * @returns {string} the path if it is a safe /uploads/images/ path, else ""
  */
 export function sanitizeImagePath(value) {
   if (typeof value !== "string") return "";
   const v = value.trim();
-  return v.startsWith("/uploads/images/") && !v.includes("..") ? v : "";
+  return isSafeImagePath(v) && v.startsWith("/uploads/images/") ? v : "";
+}
+
+/**
+ * Sanitize a plain `image` setting value (widget, collection-item, or theme setting).
+ * Broader than `sanitizeImagePath`: allows any safe in-project absolute path, so a non-upload
+ * theme asset like `/default-logo.png` survives — while the shared `isSafeImagePath` allowlist
+ * blanks anything dangerous: schemes, external / protocol-relative URLs, traversal, and any
+ * character that could break out of the unescaped `<img src>` fallback (quotes, `<`, `>`,
+ * whitespace, …). Non-strings and empty/cleared values → "".
+ * @param {*} value
+ * @returns {string} the path if safe, else ""
+ */
+export function sanitizeImageSettingValue(value) {
+  if (typeof value !== "string") return "";
+  const v = value.trim();
+  return isSafeImagePath(v) ? v : "";
 }
 
 /**
@@ -96,9 +130,11 @@ function sanitizeGalleryValue(value) {
  * @returns {*} Sanitized value
  */
 function sanitizeSettingValue(value, type) {
-  // gallery is handled before the null guard so a null/undefined value still
-  // normalizes to [] (sanitizeGalleryValue maps non-arrays to []).
+  // gallery and image are handled before the null guard so a null/undefined value still
+  // normalizes (gallery → [], image → "") — the same invariant the theme sanitizer upholds,
+  // so an image setting is always a safe string ("" or a valid path) everywhere.
   if (type === "gallery") return sanitizeGalleryValue(value);
+  if (type === "image") return sanitizeImageSettingValue(value);
   if (value == null) return value;
 
   switch (type) {
@@ -205,6 +241,18 @@ function sanitizeThemeSettingValue(value, schema) {
     const sanitized = sanitizeGalleryValue(value);
     return { value: sanitized, corrected: JSON.stringify(sanitized) !== JSON.stringify(value) };
   }
+  // image is handled BEFORE the null guard so a null/undefined value falls back to the sanitized
+  // default rather than being preserved as `null` — which themeHelpers treats as a present value
+  // and would let win over the default, erasing a good default like /default-logo.png. A valid
+  // path is kept; an explicit "" clear is preserved; anything else reverts to the default.
+  if (schema.type === "image") {
+    const cleaned = sanitizeImageSettingValue(value);
+    let img;
+    if (cleaned !== "") img = cleaned;
+    else if (typeof value === "string" && value.trim() === "") img = "";
+    else img = sanitizeImageSettingValue(schema.default);
+    return { value: img, corrected: JSON.stringify(img) !== JSON.stringify(value) };
+  }
   if (value === undefined || value === null) return { value, corrected: false };
 
   let sanitized;
@@ -243,7 +291,6 @@ function sanitizeThemeSettingValue(value, schema) {
     case "code":
       sanitized = value;
       break;
-    case "image":
     case "video":
     case "audio":
     case "icon":

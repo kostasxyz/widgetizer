@@ -22,6 +22,7 @@ import {
   sanitizeCssValue,
   sanitizeThemeSettings,
   sanitizeImagePath,
+  sanitizeImageSettingValue,
 } from "../services/sanitizationService.js";
 
 // ============================================================================
@@ -820,6 +821,127 @@ describe("sanitizeImagePath", () => {
 });
 
 // ============================================================================
+// sanitizeImageSettingValue — plain `image` setting guard (broader than gallery's)
+// ============================================================================
+
+describe("sanitizeImageSettingValue", () => {
+  it("keeps a library upload path", () => {
+    assert.equal(sanitizeImageSettingValue("/uploads/images/photo.jpg"), "/uploads/images/photo.jpg");
+  });
+
+  it("keeps a non-upload in-project theme asset path (unlike the strict gallery guard)", () => {
+    assert.equal(sanitizeImageSettingValue("/default-logo.png"), "/default-logo.png");
+    assert.equal(sanitizeImageSettingValue("/assets/logo.svg"), "/assets/logo.svg");
+    assert.equal(sanitizeImagePath("/default-logo.png"), ""); // contrast: strict guard blanks it
+  });
+
+  it("trims surrounding whitespace", () => {
+    assert.equal(sanitizeImageSettingValue("  /uploads/images/photo.jpg  "), "/uploads/images/photo.jpg");
+  });
+
+  it("blanks schemes, external / protocol-relative URLs, traversal, and relative paths", () => {
+    assert.equal(sanitizeImageSettingValue("javascript:alert(1)"), "");
+    assert.equal(sanitizeImageSettingValue("data:text/html,<script>x</script>"), "");
+    assert.equal(sanitizeImageSettingValue("https://evil.example/x.jpg"), "");
+    assert.equal(sanitizeImageSettingValue("//evil.example/x.jpg"), "");
+    assert.equal(sanitizeImageSettingValue("/uploads/images/../../etc/passwd"), "");
+    assert.equal(sanitizeImageSettingValue("uploads/images/x.jpg"), ""); // relative, no leading slash
+  });
+
+  it("blanks HTML attribute-breakout payloads — the {% image %} fallback src is unescaped", () => {
+    // basename of these reaches a raw <img src="..."> (imageTag.js); a surviving quote/space/<>
+    // would break out of the attribute → XSS. The allowlist rejects them.
+    assert.equal(sanitizeImageSettingValue('/uploads/images/x" onerror="alert(1).jpg'), "");
+    assert.equal(sanitizeImageSettingValue("/uploads/images/x<svg onload=alert(1)>.jpg"), "");
+    assert.equal(sanitizeImageSettingValue("/uploads/images/a b.jpg"), ""); // whitespace
+    assert.equal(sanitizeImageSettingValue("/uploads/images/back\\slash.jpg"), "");
+    assert.equal(sanitizeImageSettingValue("/uploads/images/x'.jpg"), ""); // single quote
+  });
+
+  it("blanks non-strings and keeps an empty value as \"\"", () => {
+    assert.equal(sanitizeImageSettingValue(""), "");
+    assert.equal(sanitizeImageSettingValue(null), "");
+    assert.equal(sanitizeImageSettingValue(42), "");
+    assert.equal(sanitizeImageSettingValue({ src: "x" }), "");
+  });
+});
+
+// ============================================================================
+// image setting sanitization via the exported entry points (widget + theme)
+// ============================================================================
+
+describe("image setting sanitization (entry points)", () => {
+  it("blanks a dangerous image value in a widget setting, keeps a valid upload", () => {
+    const schema = { settings: [{ id: "img", type: "image" }, { id: "bg", type: "image" }], blocks: [] };
+    const data = { settings: { img: "javascript:alert(1)", bg: "/uploads/images/ok.jpg" } };
+    sanitizeWidgetData(data, schema);
+    assert.equal(data.settings.img, "");
+    assert.equal(data.settings.bg, "/uploads/images/ok.jpg");
+  });
+
+  it("normalizes a widget/collection image null to \"\" (uniform invariant, handled before the null guard)", () => {
+    const wData = { settings: { img: null } };
+    sanitizeWidgetData(wData, { settings: [{ id: "img", type: "image" }], blocks: [] });
+    assert.equal(wData.settings.img, "");
+
+    const item = { settings: { featured: null } };
+    sanitizeCollectionItemData(item, { settings: [{ id: "featured", type: "image" }] });
+    assert.equal(item.settings.featured, "");
+  });
+
+  it("blanks a dangerous theme image value, keeps uploads and theme-asset paths", () => {
+    const themeData = {
+      settings: {
+        global: {
+          branding: [
+            { type: "image", id: "evil", value: "https://evil.example/x.jpg", default: "" },
+            { type: "image", id: "logo", value: "/uploads/images/logo.png", default: "" },
+            { type: "image", id: "fallback", value: "/default-logo.png", default: "" },
+          ],
+        },
+      },
+    };
+    const { data } = sanitizeThemeSettings(themeData);
+    const byId = Object.fromEntries(data.settings.global.branding.map((s) => [s.id, s.value]));
+    assert.equal(byId.evil, "");
+    assert.equal(byId.logo, "/uploads/images/logo.png");
+    assert.equal(byId.fallback, "/default-logo.png");
+  });
+
+  it("blanks a dangerous image value in a collection-item setting (third entry point)", () => {
+    const item = {
+      settings: { featured: '/uploads/images/x" onerror="alert(1).jpg', ok: "/uploads/images/ok.jpg" },
+    };
+    sanitizeCollectionItemData(item, {
+      settings: [{ id: "featured", type: "image" }, { id: "ok", type: "image" }],
+    });
+    assert.equal(item.settings.featured, "");
+    assert.equal(item.settings.ok, "/uploads/images/ok.jpg");
+  });
+
+  it("reverts an invalid or null theme image to the default, but preserves an explicit clear", () => {
+    const themeData = {
+      settings: {
+        global: {
+          branding: [
+            { type: "image", id: "bad", value: "javascript:alert(1)", default: "/default-logo.png" },
+            { type: "image", id: "cleared", value: "", default: "/default-logo.png" },
+            // null must NOT win over the default (it bypasses the switch via the null guard);
+            // handled before the guard so it reverts like any other invalid value.
+            { type: "image", id: "nulled", value: null, default: "/default-logo.png" },
+          ],
+        },
+      },
+    };
+    const { data } = sanitizeThemeSettings(themeData);
+    const byId = Object.fromEntries(data.settings.global.branding.map((s) => [s.id, s.value]));
+    assert.equal(byId.bad, "/default-logo.png"); // reverted to default, not erased
+    assert.equal(byId.cleared, ""); // explicit clear preserved
+    assert.equal(byId.nulled, "/default-logo.png"); // null reverts, doesn't wipe the default
+  });
+});
+
+// ============================================================================
 // gallery sanitization — via the exported entry points (the switch helpers are
 // private). The value is a string[] of upload paths. Same rule everywhere: drop
 // blank/invalid (or non-string) entries; normalize non-array (incl. null/undefined) to [].
@@ -846,7 +968,7 @@ describe("gallery sanitization", () => {
 
   it("drops a legacy { src, caption } object entry — NOT coerced to its src", () => {
     // Locks the "no legacy handling / no coercion" decision: an old object-shaped entry
-    // is removed, never converted to a string. (future-image-caption-field.md §5.3.)
+    // is removed, never converted to a string.
     const data = {
       settings: {
         gallery: [{ src: "/uploads/images/legacy.jpg", caption: "old" }, "/uploads/images/new.jpg"],

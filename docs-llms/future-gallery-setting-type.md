@@ -6,10 +6,9 @@
 >
 > **⚠️ Superseded in part:** the original per-entry `caption` was **removed**. Caption now
 > lives on the **media record** alongside `alt`/`title`, and the gallery value is a plain
-> **`string[]` of upload paths** — see [`future-image-caption-field.md`](future-image-caption-field.md).
-> The sections below that describe `{ src, caption }` objects are kept as the original
-> design record; read them as history, not current behavior. The author-facing reference
-> is [`theming-setting-types.md`](theming-setting-types.md).
+> **`string[]` of upload paths**. The sections below that describe `{ src, caption }` objects
+> are kept as the original design record; read them as history, not current behavior. The
+> author-facing reference is [`theming-setting-types.md`](theming-setting-types.md).
 
 ## 1. Motivation
 
@@ -28,7 +27,7 @@ purpose — usable in widget, theme, and collection-type schemas — not collect
 > **Current shape (revised):** a `gallery` value is an **ordered array of upload-path
 > strings** — `["/uploads/images/suite-01.jpg", …]`. All descriptive text (`alt`, `title`,
 > `caption`) lives on the media record. The original per-entry-object design below is kept
-> as history. See [`future-image-caption-field.md`](future-image-caption-field.md) §5.
+> as history.
 
 ~~A `gallery` value is an **ordered array of entry objects**:~~ *(superseded)*
 
@@ -107,8 +106,7 @@ helpers do **not** behave the way the earlier draft of this doc assumed.
 in `SUPPORTED_SETTING_TYPES` via `isSupportedSettingType` (line 75). Once `"gallery"` is
 in that list (§3) the validator accepts it with **no further change**. It performs no
 `src` inspection — `src` integrity is a *sanitizer* concern (§5.2), not schema
-validation. (This split matters for the tests — see §9.) Optionally support `max` (cap
-entries) later.
+validation. (This split matters for the tests — see §9.)
 
 **Empty / placeholder default** (`emptyDefaultForType`, line 270): add
 `case "gallery": return [];`. The current `default` branch returns `""`, so a gallery
@@ -220,13 +218,23 @@ function sanitizeGalleryValue(value) {
   media-record path under `/uploads/images/` — so this prefix check is exactly right for
   `gallery.src`.
 
-  **Caveat on reusing it for plain `image`:** a plain `image` *theme* setting may
-  legitimately default to a non-upload theme asset (e.g. `"default": "/default-logo.png"`).
-  The strict `/uploads/images/` check would blank those. So either (a) apply
-  `sanitizeImagePath` only to `gallery.src` for now, or (b) first broaden the helper to
-  also allow theme-relative asset paths before wiring it into the plain-`image` path. The
-  feedback's "ideally for plain image too" is correct in spirit but must not silently drop
-  legitimate theme defaults.
+  **Plain `image` sanitization — implemented.** Plain `image` settings are sanitized via a
+  broader helper `sanitizeImageSettingValue`, wired into `sanitizeSettingValue`
+  (widget/collection-item) and the `image` case of `sanitizeThemeSettingValue` (theme). Both
+  guards share a strict **allowlist** `isSafeImagePath`: a single leading `/`, only path-legal
+  characters `[A-Za-z0-9._/-]`, no `//`, no `..`. An **allowlist** (not a scheme blocklist) is
+  required because the value reaches an **HTML sink** — the `{% image %}` no-media fallback emits
+  a **raw, unescaped** `<img src="...">` with the value's basename ([`imageTag.js`](src/core/tags/imageTag.js)),
+  so a payload like `/uploads/images/x" onerror="alert(1).jpg` would otherwise break out of the
+  `src` attribute (XSS). Upload filenames are `slugify(strict)` → `[a-z0-9-]` + ext, so nothing
+  legitimate is blanked; non-upload theme assets like `/default-logo.png` survive.
+  `sanitizeImagePath` stays **strict** (adds the `/uploads/images/` prefix requirement) for
+  galleries. `image` is handled **before the null guard** in both sanitizers (like `gallery`), so
+  the invariant holds everywhere: an `image` value is always a safe string. In the theme sanitizer
+  a non-empty invalid value (incl. `null`) reverts to the (sanitized) `schema.default` rather than
+  erasing it — `null` must not survive, or theme preprocessing would let it win over the default;
+  an explicit `""` clear is preserved. In the widget/collection sanitizer (no per-setting default
+  available) a non-string normalizes to `""`.
 
 - **`caption` is plain text.** It renders via Liquid autoescape (`{{ img.caption }}`), so
   it is XSS-safe with no transform — the same way `text`/`textarea` are handled (autoescape,
@@ -351,9 +359,11 @@ neither a link nor a menu value).
 
 ## 10. Out of scope (later)
 
-- Per-entry **alt override** (alt stays on the media record for now).
-- Non-image repeaters (a generic repeater/blocks-in-collections) — still deferred.
-- A `max`/`min` count constraint (add as an optional schema field if needed).
+- Non-image repeaters (a generic repeater / blocks-in-collections) — still deferred; the next
+  item to plan.
+
+(Per-entry `alt` override and a `max`/`min` count constraint were considered and **dropped**:
+alt/title/caption stay centralized on the media record, and a count cap isn't wanted.)
 
 ## See Also
 - [Setting Types Reference](theming-setting-types.md) — where `gallery` gets documented on ship.
