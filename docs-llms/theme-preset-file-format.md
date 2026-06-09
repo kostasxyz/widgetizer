@@ -309,7 +309,7 @@ Located at `templates/global/footer.json`. The footer is a global widget with se
 {
   "type": "footer",
   "settings": {
-    "copyright": "© 2026 Saffron Restaurant. All rights reserved.",
+    "copyright": "<p>© 2026 Saffron Restaurant. All rights reserved.</p>",
     "color_scheme": "highlight-primary"
   },
   "blocks": {
@@ -347,7 +347,7 @@ Located at `templates/global/footer.json`. The footer is a global widget with se
 
 | Setting | Type | Notes |
 |---------|------|-------|
-| `copyright` | String | Copyright text in the bottom bar |
+| `copyright` | Richtext (HTML string) | Copyright text in the bottom bar — wrap in `<p>` |
 | `layout` | `"first-featured"`, `"last-featured"`, `"equal"` | Column layout. Default: `"first-featured"` |
 | `color_scheme` | Color scheme string | Footer background. Default: `"highlight-primary"` |
 
@@ -355,10 +355,11 @@ Located at `templates/global/footer.json`. The footer is a global widget with se
 
 | Block type | Settings | Notes |
 |------------|----------|-------|
-| `logo_text` | `logo_text` (text — overrides header logo text), `logo` (image), `logo_width` (range 50–300), `text` (richtext) | Brand column — logo/name + description. The `logo_text` setting defaults to the header's `logoText` if omitted. |
+| `logo_text` | `logo_text` (text), `logo` (image), `logo_width` (range 50–300), `text` (richtext) | Brand column — logo/name + description. The `logo_text` setting has its own schema default (`"Widgetizer"`) — set it explicitly to the brand name; it does **not** inherit the header's `logoText`. |
 | `text_block` | `title` (text), `text` (richtext) | Freeform text column — hours, address, tagline, anything |
 | `menu_block` | `title` (text), `menu` (menu ID, default: `"footer-menu"`) | Navigation links column |
 | `social_block` | `title` (text) | Social media icons from global theme settings |
+| `badges_block` | `title` (text), `max_height` (range 30–80), `badge_1_image`–`badge_4_image` (image), `badge_1_link`–`badge_4_link` (link) | Certification/award badge images (up to 4) — image settings must be omitted in presets per the no-images rule |
 
 ---
 
@@ -400,7 +401,7 @@ Located in `menus/`. Each menu is a separate JSON file.
 |-------|----------|-------------|
 | `label` | Yes | Display text in the navigation |
 | `link` | Yes | URL — use `"{slug}.html"` for internal pages (e.g., `"about.html"`, `"index.html"`) |
-| `items` | Yes | Array of child menu items (empty array `[]` for leaf items). Supports up to 4 nesting levels. |
+| `items` | Yes | Array of child menu items (empty array `[]` for leaf items). Supports up to 3 nesting levels (top level + two submenu levels) — the menu editor and the menu renderer both stop there. |
 
 **Do not include `pageUuid`** in preset menu templates. UUIDs and `pageUuid` references are generated and enriched automatically at project creation time based on matching page slugs.
 
@@ -497,6 +498,6 @@ Preset templates are **simpler** than project files. The following fields are ad
 |-------|-------|----------|
 | `uuid` | Pages, menus | Generated at project creation |
 | `pageUuid` | Menu items, link objects | Enriched at project creation by matching page slugs |
-| `seo` | Pages | Added with defaults at project creation |
+| `seo` | Pages | Added by the editor when the page is created/saved in the UI — its absence is fine (the renderer falls back to defaults) |
 
 Keep preset templates minimal — they represent the starting content, not the full runtime state.

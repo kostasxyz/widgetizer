@@ -20,6 +20,7 @@ Unlike theme widgets (which live inside each theme's `/widgets` folder), core wi
 | ------- | -------------- | ----------------------------------------------------------------------------- |
 | Spacer  | `core-spacer`  | Adds vertical whitespace with separate desktop/mobile heights and visibility  |
 | Divider | `core-divider` | Renders a horizontal line with configurable color, thickness, width & padding |
+| Form    | `core-form`    | Configurable contact/inquiry form (fields as blocks). Built for Widgetizer Hosting: renders the hosted-forms markup contract and pairs with an export-time `widgetizer.forms.json` manifest (`server/services/formsManifestService.js`); on other static hosts the form has no submission backend |
 
 All core widget **type** strings are prefixed with `core-` to avoid collisions with theme widgets.
 
@@ -35,6 +36,10 @@ src/core/widgets/
 ├── core-divider/
 │   ├── schema.json
 │   └── widget.liquid
+├── core-form/
+│   ├── schema.json
+│   ├── widget.liquid
+│   └── insights.md
 └── locales/
     └── en.json
 ```
@@ -83,8 +88,8 @@ If the flag is **absent or `true`**, core widgets are included.
 
 1. `GET /api/projects/:id/widgets` is called from the editor.
 2. The server reads **theme.json** for `useCoreWidgets`.
-3. If allowed, it scans `/src/core/widgets/` for subdirectories.
-4. For each subdirectory, it reads `schema.json` to load the widget definition.
+3. If allowed, it scans `/src/core/widgets/` for `core-`-prefixed subdirectories that contain a `schema.json` (helper folders like `locales/` are skipped).
+4. For each such subdirectory, it reads `schema.json` to load the widget definition.
 5. Schemas from core widgets and theme widgets are concatenated and returned to the editor.
 
 ---

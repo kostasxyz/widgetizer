@@ -150,8 +150,9 @@ The backend handles the logic for listing themes, processing uploads, and managi
 | `GET` | `/api/themes/:id/versions` |  | `getThemeVersionsHandler` | Gets all available versions for a theme. |
 | `GET` | `/api/themes/:id/presets` |  | `getThemePresets` | Gets all presets for a theme (names, descriptions, screenshots). |
 | `POST` | `/api/themes/:id/update` |  | `updateTheme` | Builds `latest/` snapshot for a single theme. |
-| `GET` | `/api/themes/project/:projectId` |  | `getProjectThemeSettings` | Gets a project's `theme.json` settings. |
-| `POST` | `/api/themes/project/:projectId` |  | `saveProjectThemeSettings` | Saves a project's `theme.json` settings. |
+| `GET` | `/api/themes/project/:projectId` | `resolveActiveProject` | `getProjectThemeSettings` | Gets a project's `theme.json` settings. |
+| `POST` | `/api/themes/project/:projectId` | `resolveActiveProject` | `saveProjectThemeSettings` | Saves a project's `theme.json` settings. |
+| `GET` | `/api/themes/project/:projectId/locales/:lang` | `resolveActiveProject` | `getProjectThemeLocale` | Gets the merged core+project theme locale data for a project. |
 | `POST` | `/api/themes/upload` | `handleThemeUpload` | `uploadTheme` | Handles upload and extraction of a theme ZIP (new theme or updates). |
 | `DELETE` | `/api/themes/:id` |  | `deleteTheme` | Deletes a theme. Returns 409 if theme is used by any project. |
 

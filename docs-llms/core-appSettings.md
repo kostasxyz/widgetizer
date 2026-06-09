@@ -73,7 +73,7 @@ The App Settings system uses a **schema-driven architecture** that is completely
 
 #### `AppSettings.jsx` (Main Page)
 
-The main page component (reduced to ~61 lines) acts as an orchestrator:
+The main page component (~130 lines) acts as an orchestrator:
 
 - **Layout Management**: Uses `PageLayout` for consistent page structure
 - **Loading States**: Displays loading spinners and error states

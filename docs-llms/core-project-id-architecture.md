@@ -23,8 +23,8 @@ This architecture decouples the project's identity from its filesystem represent
 
 ### 2. Mutable Filesystem Path (Project FolderName)
 
-- Generated from the project name using the shared backend slug helper path (`generateUniqueSlug()` / `sanitizeSlug()`)
-- Can change when the project is renamed
+- Generated from the project name at creation time using the shared backend slug helper path (`generateUniqueSlug()` / `sanitizeSlug()`)
+- Independently editable afterwards: the project edit form exposes a Folder Name field; renaming the project's display name alone does not change the folderName
 - Stored as `project.folderName` in the SQLite `projects` table
 - Used for:
   - Directory names (`data/projects/{folderName}/`)
@@ -94,11 +94,10 @@ const pagePath = getPagePath(projectFolderName, pageSlug);
 
 **Rationale:** Menus are stored as JSON files in `data/projects/{folderName}/menus/`. Like pages, menu operations require folderName resolution.
 
-**Pattern:**
+**Pattern:** Like pages, menu routes use the `resolveActiveProject` middleware, so handlers read the project from `req.activeProject`.
 
 ```javascript
-const activeProjectId = projectRepo.getActiveProjectId();
-const activeProject = projectRepo.getProjectById(activeProjectId);
+const { activeProject } = req;
 const projectFolderName = activeProject.folderName;
 
 const menusDir = getProjectMenusDir(projectFolderName);
@@ -309,13 +308,15 @@ export function isProjectResolutionError(error) {
 
 ## Renaming Projects
 
-When a project's name (and thus folderName) changes:
+When a project's folderName changes (the user edits the Folder Name field on the project edit form):
 
-1. New folderName is generated from the new name
-2. Project directory is renamed from old folderName to new folderName
+1. The new folderName is validated (`^[a-z0-9-]+$`) and checked for conflicts
+2. Project directory is renamed from old folderName to new folderName (copy + remove, for Windows compatibility)
 3. All file references use the new folderName
 4. Project ID remains unchanged
 5. API endpoints continue to work with the same UUID
+
+Renaming only the project's display name does not touch the folderName or filesystem.
 
 ---
 

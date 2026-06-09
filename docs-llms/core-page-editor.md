@@ -22,11 +22,13 @@ The `PageEditor` is composed of several specialized child components, each with 
 
 - **`SettingsPanel`**: The right-hand panel. When a widget or block is selected, this panel dynamically displays the relevant configuration options based on its schema. All changes made here are immediately applied to the selected component and reflected in the preview. Schema labels that use `tTheme:` prefixed keys are resolved at render time through the `useThemeLocale` hook's `tTheme()` function.
 
+- **`ThemeSelector`**: A "Settings" dropdown rendered inside the `EditorTopBar` that lists the theme's setting groups (colors, fonts, style, etc.). Selecting a group (via `setSelectedThemeGroup` in the widget store) opens that group's settings in the `SettingsPanel`; groups with unsaved changes show a dot indicator.
+
 - **`WidgetSelector`**: A modal dialog that opens when the user wants to add a new widget to the page. It presents a list of available widgets to choose from.
 
 - **`BlockSelector`**: Similar to the `WidgetSelector`, this modal allows the user to add a nested block (e.g., a slide in a carousel, a column in a grid) to a compatible widget.
 
-- **`ConfirmationModal`**: A generic modal used to confirm potentially destructive actions, ensuring the user doesn't accidentally delete content. It is used, for example, when deleting a widget. Localized messages and actions.
+Note: deleting a widget or block in the editor happens immediately (no confirmation modal) — the action is recoverable via the undo/redo history.
 
 ## State Management and Data Flow
 
@@ -72,6 +74,7 @@ The preview iframe communicates via `postMessage`. For non-structural changes, `
 | `LOAD_FONTS` | Font picker changes | Injects/updates Google Fonts `<link>` tag |
 | `UPDATE_STYLE_CLASSES` | Theme style settings change (shapes, card style, spacing, etc.) | Swaps body classes (e.g., `corner-sharp` → `corner-rounded`) to activate different CSS rulesets |
 | `UPDATE_BODY_CLASS` | Header transparent setting changes | Toggles a CSS class on `<body>` (e.g., `transparent-header`) |
+| `UPDATE_CUSTOM_CSS` / `UPDATE_CUSTOM_SCRIPTS` | Theme custom code settings change | Re-injects custom CSS / scripts (debounced 300ms) |
 | `UPDATE_WIDGET_SETTINGS` | Simple text/image changes | Optimistic instant feedback before morph completes |
 
 Handlers live in `src/utils/previewRuntime.js` (injected into the iframe).
@@ -160,9 +163,9 @@ The page editor supports editing global widgets (header and footer) alongside re
 
 Global widgets appear in the `WidgetList` component as fixed, non-draggable items:
 
-- **Header Widget**: Displayed at the top of the widget list with a "Global Header" label
-- **Footer Widget**: Displayed at the bottom of the widget list with a "Global Footer" label
-- **Visual Distinction**: Global widgets use a different visual styling (grey background) to distinguish them from page widgets
+- **Header Widget**: Displayed at the top of the widget list, labelled with the widget's display name (or its `name` setting)
+- **Footer Widget**: Displayed at the bottom of the widget list, labelled the same way
+- **Visual Distinction**: Global widgets are separated from the page widgets by horizontal divider lines and rendered via `FixedWidgetItem` (no drag handle)
 
 #### Global Widget Settings
 

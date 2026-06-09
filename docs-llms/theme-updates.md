@@ -96,19 +96,22 @@ themes/arch/updates/             # In the seed directory
 - **Empty directories** in `deleted/` mean "delete this entire folder"
 - **Non-empty directories** are just path containers (e.g., `deleted/assets/` won't delete `assets/`, only the files inside)
 
-**Deletion eligibility:**
+**Deletion eligibility (effect on projects):**
 
-| Path            | Can be deleted? | Notes                  |
-| --------------- | --------------- | ---------------------- |
-| `assets/`       | ✅ Yes          | Theme infrastructure   |
-| `widgets/`      | ✅ Yes          | Theme infrastructure   |
-| `snippets/`     | ✅ Yes          | Theme infrastructure   |
-| `locales/`      | ✅ Yes          | Theme infrastructure   |
-| `layout.liquid` | ✅ Yes          | Theme infrastructure   |
-| `templates/`    | ❌ No           | User content, add-only |
-| `menus/`        | ❌ No           | User content, add-only |
-| `pages/`        | ❌ No           | Protected user content |
-| `uploads/`      | ❌ No           | Protected user content |
+The snapshot build applies `deleted/` paths to `latest/` verbatim — there is no per-path enforcement at build time. Whether a deletion reaches projects depends on how `applyThemeUpdate` treats that path:
+
+| Path                | Propagates to projects? | Notes                  |
+| ------------------- | ----------------------- | ---------------------- |
+| `assets/`           | ✅ Yes                  | Theme infrastructure — folder replaced wholesale on update |
+| `widgets/`          | ✅ Yes                  | Theme infrastructure — folder replaced wholesale on update |
+| `snippets/`         | ✅ Yes                  | Theme infrastructure — folder replaced wholesale on update |
+| `locales/`          | ✅ Yes                  | Theme infrastructure — folder replaced wholesale on update |
+| `collection-types/` | ✅ Yes                  | Theme infrastructure — folder replaced wholesale on update |
+| `layout.liquid`     | ✅ Yes                  | Theme infrastructure   |
+| `templates/`        | ❌ No                   | Removed from the snapshot only — projects are add-new-only, so existing pages are never deleted (the template just stops being offered) |
+| `menus/`            | ❌ No                   | Removed from the snapshot only — projects are add-new-only, so existing menus are never deleted |
+| `pages/`            | ❌ No                   | Not a theme path — exists only in projects (protected user content) |
+| `uploads/`          | ❌ No                   | Not a theme path — exists only in projects (protected user content) |
 
 ### Materialized Snapshot (`latest/`)
 
@@ -180,6 +183,8 @@ When updating `theme.json`, the system uses intelligent merging:
 2. **Existing user values** are **preserved** (not overwritten)
 3. **Removed settings** (deleted by theme author) are **removed** from the project
 
+User customizations live in each setting's `value` field (written by the editor; `default` stays the schema default, and the renderer uses `value` when present). The merge takes the new schema as the base and copies the user's `value` onto each setting whose `id` still exists.
+
 ### Example
 
 **Theme's new `theme.json`:**
@@ -205,7 +210,7 @@ When updating `theme.json`, the system uses intelligent merging:
   "settings": {
     "global": {
       "colors": [
-        { "id": "primary", "default": "#123456" }, // User changed this
+        { "id": "primary", "default": "#0000ff", "value": "#123456" }, // User changed this
         { "id": "secondary", "default": "#ff0000" },
         { "id": "old_color", "default": "#999999" } // Removed by theme author
       ]
@@ -221,7 +226,7 @@ When updating `theme.json`, the system uses intelligent merging:
   "settings": {
     "global": {
       "colors": [
-        { "id": "primary", "default": "#123456" }, // User value preserved
+        { "id": "primary", "default": "#0000ff", "value": "#123456" }, // User value preserved
         { "id": "secondary", "default": "#ff0000" },
         { "id": "accent", "default": "#00ff00" } // New setting added
         // old_color removed (not in new theme)

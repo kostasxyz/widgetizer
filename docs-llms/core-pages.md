@@ -52,7 +52,7 @@ The frontend logic for page management is handled by three main React components
 ### Key Components
 
 - `src/pages/Pages.jsx`: The main dashboard for viewing all pages associated with the currently active project. It lives at `/pages` inside the site workspace shell and is only reachable when an active project exists. It displays pages in a table and provides the primary UI for initiating actions like editing, deleting, duplicating, or opening a page in the visual editor. Fully localized with `react-i18next`.
-- `src/pages/PagesAdd.jsx`: Contains the form for creating a new page. Integrates `useFormNavigationGuard` to prevent accidental navigation with unsaved changes.
+- `src/pages/PagesAdd.jsx`: Contains the form for creating a new page. Integrates `useGuardedFormPage` (a wrapper around `useFormNavigationGuard`) to prevent accidental navigation with unsaved changes.
 - `src/pages/PagesEdit.jsx`: Contains the form for modifying an existing page's details. Includes navigation guards and automatic redirection when page slugs change.
 - `src/components/pages/PageForm.jsx`: A reusable form component used by both `PagesAdd` and `PagesEdit` to capture page details:
   - **Main Fields**: `name` (Title), `slug` (Filename)
@@ -121,7 +121,7 @@ The page interface supports bulk deletion with comprehensive safety features:
 2. **Select All**: Header checkbox allows selecting/deselecting all visible pages at once
 3. **Visual Feedback**: Selected pages are highlighted with a pink background
 4. **Bulk Delete Button**: Appears only when pages are selected, showing the count of selected items
-5. **Confirmation Dialog**: Uses `useConfirmationModal` to confirm bulk deletion with count information
+5. **Confirmation Dialog**: Uses `useConfirmationAction` (a thin wrapper around `useConfirmationModal`) to confirm bulk deletion with count information
 6. **Automatic Cleanup**: Clears selection after successful bulk deletion
 
 #### Integration with Pages Interface
@@ -163,7 +163,7 @@ This is the core of the backend logic. The controller functions interact with th
   4.  **UUID Handling**: For new pages, a UUID v4 is generated. For updates, the existing UUID is preserved to maintain link integrity.
   5.  It writes the complete page data to the corresponding `.json` file.
   6.  **Media Usage Tracking**: Updates media file usage tracking to reflect which images are used by this page.
-- **Delete Operation**: The controller finds the correct file by its slug and deletes it from the filesystem. Also removes the page from all media usage tracking. After deletion, **automatic reference cleanup** runs: all menu items and widget link settings across the project that reference the deleted page's `pageUuid` are cleared (link set to empty, `pageUuid` removed). This includes page widgets, global widgets (header/footer), and all menus.
+- **Delete Operation**: The controller finds the correct file by its slug and deletes it from the filesystem. Also removes the page from all media usage tracking. After deletion, **automatic reference cleanup** runs: all menu items and widget link settings across the project that reference the deleted page's `pageUuid` are cleared (link set to empty, `pageUuid` removed). This includes page widgets, global widgets (header/footer), all menus, and collection item link settings.
 - **Duplicate Operation**: The controller reads the source page's data, generates a new unique slug (e.g., by appending `-copy`), **generates a new UUID** (to ensure the duplicate is a distinct entity), updates the `name` and `slug` fields, and writes it to a new file. Duplicated pages use the suffix naming pattern `Page Name (Copy)`, `Page Name (Copy 2)`, etc. Updates media usage tracking for the duplicated page.
 
 ### Security Considerations

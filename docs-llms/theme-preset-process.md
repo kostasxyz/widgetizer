@@ -103,6 +103,8 @@ cp themes/arch/assets/base.css data/projects/{folder}/assets/base.css
 
 Changes to widget templates (`.liquid`), CSS, or JS all follow this pattern.
 
+**Tip:** `npm run theme:sync -- --project {folder}` automates this — it watches `themes/arch/` and mirrors every change into both `data/themes/arch/` and `data/projects/{folder}/` (excluding `templates/`, `presets/`, `updates/`, `latest/`). For preset content there is `npm run preset:sync -- --project {folder} --preset {preset-id}`, which syncs the preset's templates/menus/settings into a live project.
+
 **If changes are to preset content** (templates JSON, menus JSON, preset.json settings):
 - Edit the files in `themes/arch/presets/{preset-id}/` directly
 - These only affect new projects created from the preset, not existing ones
@@ -134,11 +136,11 @@ Add or update the preset entry in `themes/arch/presets/presets.json`:
   "id": "{preset-id}",
   "name": "Display Name",
   "description": "Industry label",
-  "liveDemo": "https://widgetizer.org/demos/{preset-id}"
+  "liveDemo": "https://demos.widgetizer.org/{preset-id}/"
 }
 ```
 
-The `liveDemo` field is optional — add it after the demo is deployed (Step 8).
+The `liveDemo` field is optional — add it after the demo is deployed (Step 9).
 
 Remember to copy `presets.json` to the runtime location too:
 
@@ -152,9 +154,9 @@ cp themes/arch/presets/presets.json data/themes/arch/presets/presets.json
 
 1. In the Widgetizer UI, go to **Export Site** for the project
 2. Export generates a complete static HTML site
-3. Upload the exported files to `widgetizer.org/demos/{preset-id}/`
+3. Upload the exported files to `demos.widgetizer.org/{preset-id}/`
 4. Verify the live demo is accessible
-5. If not already set, add the `liveDemo` URL to `presets.json` (see Step 7)
+5. If not already set, add the `liveDemo` URL to `presets.json` (see Step 8)
 
 ---
 
@@ -170,6 +172,6 @@ For each preset, confirm:
 - [ ] Theme source files updated if any CSS/template fixes were made
 - [ ] Screenshot captured at 1024x1024 and placed in preset folder
 - [ ] `presets.json` entry added/updated (including `liveDemo` if ready)
-- [ ] Site exported and uploaded to widgetizer.org/demos/
+- [ ] Site exported and uploaded to demos.widgetizer.org
 - [ ] Live demo verified working
 - [ ] Tracker updated in [theme-presets-tracker.md](theme-presets-tracker.md)

@@ -242,7 +242,10 @@ The `settings.global` object defines customizable options organized into logical
 
 - `header`: Visual divider to group related settings into sections
 - `text`: Single-line text input. _(Can be used with `outputAsCssVar` if its value is a valid CSS value, like a color or size.)_
+- `number`: Numeric input with optional `min`/`max`.
 - `textarea`: Multi-line text input field. _(Can be used with `outputAsCssVar` if its value is a valid CSS value.)_
+- `richtext`: Rich text editor with basic formatting (bold, italic, links, lists). Value is HTML, sanitized via DOMPurify.
+- `code`: Code editor with syntax highlighting (`language`: css/html/javascript). Output is intentionally raw.
 - `color`: Color picker with hex input and color swatch. _(Ideal for `outputAsCssVar`.)_
 - `checkbox`: Boolean toggle switch. _(Not typically used for direct CSS output, as its value is a boolean.)_
 - `range`: Numeric slider with min/max/step options. _(Ideal for `outputAsCssVar`. The output value is a unitless number, so you may need `calc()` in CSS, e.g., `width: calc(1px _ var(--my-range-var));`)\*
@@ -250,8 +253,13 @@ The `settings.global` object defines customizable options organized into logical
 - `radio`: Radio buttons for single selection from options. _(Can be used with `outputAsCssVar` if the `value` of the selected option is a valid CSS value.)_
 - `font_picker`: Font family and weight selector with CSS variable output. _(Specially designed for `outputAsCssVar`; it generates multiple variables for font properties, e.g., `--group-id-family` and `--group-id-weight`.)_
 - `image`: Image uploader with preview, browse, and metadata editing. _(Can be used with `outputAsCssVar` to output the image URL, suitable for `background-image: url(var(--my-image-var));`)_
+- `gallery`: Repeatable, reorderable list of images. Value is an ordered array of upload-path strings.
+- `icon`: Icon picker backed by the theme's `assets/icons.json`. Value is the icon name.
+- `file`: File asset selector for downloadable documents (PDF). Value is the storage path.
+- `youtube`: YouTube URL/ID input with embed options; rendered with the `{% youtube %}` tag.
 - `menu`: Dropdown populated with available navigation menus. _(Value is a menu ID; not used for CSS.)_
 - `link`: Link builder for internal pages or custom URLs with text and target options. _(Value is a complex object; not used for CSS.)_
+- `table`: Repeating typed rows (collection-type schemas only in v1). Value is an ordered array of row objects.
 
 ### CSS Variables & Theme Object Access
 
@@ -1596,10 +1604,10 @@ Each locale file (e.g., `locales/en.json`) is a nested JSON object. The dot-sepa
       "color_scheme": {
         "label": "Color Scheme",
         "options": {
-          "standard": "Standard",
-          "standard_accent": "Standard Accent",
-          "highlight": "Highlight",
-          "highlight_accent": "Highlight Accent"
+          "standard_primary": "Standard Primary",
+          "standard_secondary": "Standard Secondary",
+          "highlight_primary": "Highlight Primary",
+          "highlight_secondary": "Highlight Secondary"
         }
       }
     },
@@ -1639,6 +1647,8 @@ Each locale file (e.g., `locales/en.json`) is a nested JSON object. The dot-sepa
 | Global group name | `global.{group}.name` | `tTheme:global.colors.name` |
 
 Widget types with hyphens are converted to underscores in keys: `bento-grid` becomes `bento_grid`.
+
+**Shared keys:** settings and block types that repeat identically across many widgets (the Content/Display section headers, color scheme, spacing, and the standardized heading/text/button blocks) can live under a shared `global.widgets.*` namespace instead of per-widget keys — e.g. `tTheme:global.widgets.settings.content_header.label`, `tTheme:global.widgets.blocks.heading.settings.size.label`. Arch uses this for all shared block types so labels stay identical everywhere.
 
 ### How Translations Work
 
@@ -1715,7 +1725,7 @@ The animation system requires two parts in `layout.liquid`:
 **1. CSS Override (in `<head>`)** - When animations are disabled, ensure elements remain visible:
 
 ```liquid
-{% unless theme.layout.enable_reveal_animations %}
+{% unless theme.general.enable_reveal_animations %}
   <style>.reveal { opacity: 1 !important; transform: none !important; }</style>
 {% endunless %}
 ```
@@ -1723,28 +1733,28 @@ The animation system requires two parts in `layout.liquid`:
 **2. Script Loading (in footer)** - Only load the animation script when enabled:
 
 ```liquid
-{% if theme.layout.enable_reveal_animations %}
-  {% enqueue_script "reveal.js", { "priority": 50 } %}
+{% if theme.general.enable_reveal_animations %}
+  {% asset src: "reveal.js", defer: true %}
 {% endif %}
 ```
 
 #### Theme Setting Definition
 
-Add this to your `theme.json` under `settings.global`:
+Add this to your `theme.json` under `settings.global` (Arch defines it in the `general` group):
 
 ```json
-"layout": [
+"general": [
   {
     "type": "header",
-    "id": "layout_header",
-    "label": "tTheme:global.layout.settings.layout_header.label"
+    "id": "animations_header",
+    "label": "tTheme:global.general.settings.animations_header.label"
   },
   {
     "type": "checkbox",
     "id": "enable_reveal_animations",
-    "label": "tTheme:global.layout.settings.enable_reveal_animations.label",
-    "default": true,
-    "description": "tTheme:global.layout.settings.enable_reveal_animations.description"
+    "label": "tTheme:global.general.settings.enable_reveal_animations.label",
+    "default": false,
+    "description": "tTheme:global.general.settings.enable_reveal_animations.description"
   }
 ]
 ```
@@ -2097,7 +2107,7 @@ This theming system provides a powerful and flexible foundation for creating bea
 When a new project is created, the selected theme is copied into the project's data directory so it can be customized independently of the source theme:
 
 - **Destination**: `/data/projects/<folderName>/`
-- **Copied items**: `layout.liquid`, `templates/`, `widgets/`, `assets/`, and `menus/`
+- **Copied items**: the entire theme directory — `layout.liquid`, `theme.json`, `widgets/`, `assets/`, `snippets/`, `locales/`, `menus/`, `collection-types/`, etc. The versioning directories (`updates/`, `latest/`) and `presets/` are excluded, and `templates/` is resolved through the selected preset (preset templates when present, root templates otherwise)
 
 If a preset was selected during creation, the system also applies preset overrides (custom templates, menus, and/or settings) after the theme copy. The `presets/` directory itself is never copied into projects. See [Project Management](core-projects.md) for the full creation workflow and [Theme Presets](theme-presets.md) for preset details.
 

@@ -5,6 +5,9 @@
 > editor (theme authors define blocks; end users arrange them) instead of a fixed
 > `template.liquid`. Nothing here is decided; the open forks in §7 are the things to sleep on.
 > Builds on the existing collections system, the widget **blocks** model, and the page editor.
+> **Aegean** is the playground theme for all collections work (Arch's `portfolio` type is
+> being retired). For *when* to build this, see the verdict in §8 — short version: when the
+> hosted SaaS needs it.
 
 ## 1. The idea in one line
 
@@ -57,7 +60,10 @@ distinctions we sensed become **flags** the theme author sets per block type:
 - **`inDefault`** — whether it's in the starter layout (data blocks usually yes; a divider you
   add on demand).
 - **`reads`** — the explicit link from a block back to the schema field/group it renders (so the
-  system knows the Rates block renders the Rates field).
+  system knows the Rates block renders the Rates field). This is more than bookkeeping — it's
+  the hook for editor affordances: click a data block → deep-link to that field in the item
+  form; warn when a block is hidden but items carry data for it (or a field has no block
+  rendering it).
 
 **Consequence — static blocks carry template-level content.** When a user types into a static
 text block on the Accommodation template, that text is shared by **every** accommodation item
@@ -147,6 +153,22 @@ data blocks (gallery, rates) stay per-type because they read that type's fields.
   reorders (drag), shows/hides, edits each block's settings, and adds text/divider blocks from
   the palette. Data blocks preview against a **sample item** so the user sees real content.
 
+### The split that stays (decided)
+
+Two surfaces, on purpose, and they don't merge:
+
+- **Collection form** — the user edits *data* (one item). Changes affect that item only.
+- **Item template editor** — the user adjusts *layout* (the type). Changes affect every item.
+
+Mixing them blurs "affects this item" vs "affects all items" (Shopify keeps the same
+separation). The form's existing **eye-icon item preview stays**: it's the only place to check
+*your specific item's* content (real photos, a long title that wraps weirdly) against the
+template — the template editor previews a sample item, so it can never answer that question.
+Because every preview path already rides the shared item-page renderer, the eye preview
+automatically shows the user-arranged layout the day this ships, for free. Navigation-level
+stitching is enough: an "Edit layout" link from the item preview, an item picker in the
+template editor (fork §7.6).
+
 ## 6. Spectrum — there is a much smaller first step
 
 - **Lean MVP:** the canvas only **reorders / toggles** the schema-derived data blocks (plus
@@ -157,20 +179,64 @@ data blocks (gallery, rates) stay per-type because they read that type's fields.
   Powerful, but now you must answer "what does a generic widget see when it sits inside an item
   page," handle item-agnostic widgets, etc. The expensive 20%.
 
+### The hidden cost in "reuse the page editor": the live-preview loop
+
+The "~70% already exists" figure is fair for state/storage/sidebar but quietly excludes the
+editor's *instant feel*, which is built around per-widget morphing: diff state per widget id
+(`previewManager.js`), POST the **whole widget JSON** to `/api/preview/widget`, morph the
+returned HTML into the iframe by `data-widget-id`. Three of its assumptions break for item
+blocks:
+
+1. **Render unit** — `blocks/<name>/block.liquid` has no loader; the morph endpoint renders
+   `widget.liquid` only.
+2. **Context** — a widget is self-contained (the client posts everything the template reads);
+   an item block reads `item.settings.*`, and a render-safe `item` must be resolved/sanitized
+   **server-side** (`prepareCollectionItemForRender`: links, menus, richtext) per request.
+3. **Pipeline** — `renderCollectionItemPage` is all-or-nothing; there's no "render one block"
+   entry point, and the `{% blocks %}` tag must emit `data-block-id` morph targets.
+
+Two reuse seams make this much cheaper than it sounds:
+
+- `renderCollectionItemPage` **already returns `mainContentHtml` separately** from the full
+  page — so "re-render the whole item template, morph only the main region" is nearly free.
+- Present the `{% blocks %}` region to the editor as **one pseudo-widget** whose
+  `blocks`/`blocksOrder` are the item blocks — exactly how header/footer already piggyback on
+  the widget model — and the WidgetList, block selection/overlays, drag-reorder, and the client
+  half of the morph path reuse as-is. The genuinely new work concentrates server-side.
+
+Scope ladder for the preview loop:
+
+- **Tier 0 — full iframe reload per change** (debounced). Works today:
+  `POST /api/preview/collection` already renders draft items (the eye-icon preview uses it).
+  Fine for proving storage/UI; clunky as an editor.
+- **Tier 1 — main-region morph.** Re-render the item page server-side, morph just
+  `mainContentHtml` into the iframe. One new runtime message, no per-block endpoint, no flash,
+  scroll preserved. For a template of ~6 blocks this is cheap and gets ~90% of the page-editor
+  feel. **The lean MVP should target this.**
+- **Tier 2 — true per-block morph** (new endpoint with server-side item-context loading,
+  per-block diffing, `data-block-id` targets, optimistic text updates). Parity with pages; only
+  worth it if Tier 1 ever feels slow — for a single-item template it likely won't.
+
 ## 7. Open forks — the things to sleep on
 
 1. **Single slot vs named regions** *(the big one).* `item.liquid` with one `{% blocks %}` slot =
    a single composable column → today's rich 2-column "main + aside" accommodation layout
    flattens into one stream. Named regions (`{% blocks 'main' %}` / `{% blocks 'aside' %}`, each
    block assigned a region) preserve complex layouts but add files + a two-drop-zone editor.
-   This choice most shapes both the files and the editor.
+   This choice most shapes both the files and the editor. *Middle path to weigh:* keep ONE slot
+   but give each block instance a `placement` flag (full / main / aside) that the shell turns
+   into the 2-column CSS — one drop zone in the editor, side-by-side blocks on the page. Note
+   this fork interacts with §6: if the lean MVP ships single-slot, the first theme with a
+   2-column item layout immediately demands more.
 2. **Lean (reorder/toggle) vs full (free-form add any block/widget)** — §6.
 3. **Palette ownership** — confirm the `block.json`-per-folder declaration is how a theme author
    registers the palette and links a block to its schema field (`reads`).
 4. **Migration from today's fixed `template.liquid`** — opt-in alongside fixed templates, or the
    new default? Backward-compat for themes that don't define blocks.
 5. **Singleton enforcement** — is "one Rates block" a hard rule or a soft default (could a theme
-   legitimately render the same data twice)?
+   legitimately render the same data twice)? *Leaning: soft* — `singleton` just grays the block
+   out in the palette once placed. A hard rule means enforcement code, UI states, and
+   theme-update edge cases (what if the count changes?), all to prevent something harmless.
 6. **Preview item selection** — first item, a flagged sample, or a picker, when editing a
    type-level template.
 7. **Per-type vs theme-wide visual blocks** — where `text`/`divider`/`spacer` live (§4 nicety).
@@ -178,13 +244,33 @@ data blocks (gallery, rates) stay per-type because they read that type's fields.
 ## 8. Honest assessment
 
 Coherent, on-trend (FSE / Shopify sections), and it fits the architecture surprisingly well —
-the widget/blocks model and the page editor are ~70% of what's needed, which is the difference
-between "big feature" and "two-quarter rewrite." The strategic calls: **reuse the
-widget-composition machinery, don't build a second one**, and **start with the lean reorder/toggle
-MVP** before free-form interleaving. The honest counter-question: are fixed item templates
-actually limiting real themes yet? If theme authors are happy hand-designing item pages, this is
-a "later, when a theme needs it" feature — even the lean version is real work across storage,
-theme-authoring, editor, and render.
+the widget/blocks model and the page editor are ~70% of what's needed (state/storage/sidebar;
+the preview loop is the honest remainder — see §6), which is the difference between "big
+feature" and "two-quarter rewrite." The strategic calls: **reuse the widget-composition
+machinery, don't build a second one**, and **start with the lean reorder/toggle MVP** before
+free-form interleaving.
+
+### When to build — resolved
+
+The old counter-question ("are fixed item templates actually limiting real themes yet?") has an
+answer now:
+
+- **The audience doesn't need it yet.** Widgetizer's users are small businesses — a few posts a
+  year, simple services/team/portfolio collections. They want item pages that look great with
+  *zero* decisions; a well-designed fixed `template.liquid` isn't the limitation, it's the
+  product. The people who rearrange item layouts are power users and theme authors — and today
+  the entire set of theme authors is one person.
+- **Deferring is cheap.** There's no theme ecosystem yet, so no migration burden accrues:
+  converting one fixed template to `item.liquid` + blocks later is an afternoon of the
+  maintainer's own time, not a breaking change for anyone.
+- **The real trigger is the hosted SaaS.** In the OSS app a determined user can always edit
+  `template.liquid` — the escape hatch exists. On the SaaS, users never touch Liquid; the
+  editor is the *only* knob, so composable item templates go from nicety to the only way a
+  paying customer controls item layout.
+
+**Verdict: later, when the SaaS needs it** (a better trigger than any calendar date). Meanwhile,
+the first fixed `template.liquid` written for Aegean doubles as the design study — where the
+template *wants* to be sliced into blocks is the best possible input to fork §7.1.
 
 ## See Also
 - [Collections](core-collections.md) — current item schema, `template.liquid`, item pages, `| collection`.

@@ -14,6 +14,7 @@ A typical menu JSON file (`main-menu.json`) has the following structure:
 ```json
 {
   "id": "main-menu",
+  "uuid": "d4e5f6a7-b8c9-0123-def0-456789012345",
   "name": "Main Menu",
   "description": "The primary navigation menu for the site header.",
   "items": [
@@ -48,9 +49,13 @@ A typical menu JSON file (`main-menu.json`) has the following structure:
 }
 ```
 
+**Menu Identity:**
+
+In addition to the slug-based `id` (which doubles as the filename), each menu carries a stable `uuid`. Widget `menu`-type settings reference menus by this UUID (with a fallback to the slug ID at resolution time), so renaming a menu never breaks widget references. Menus created before the field existed are lazily backfilled with a `uuid` when read by `getAllMenus`/`getMenuById`.
+
 **Menu Item Fields:**
 
-- `items`: An array of menu item objects. Each item can contain a nested `items` array, allowing for up to 4 levels of hierarchy.
+- `items`: An array of menu item objects. Each item can contain a nested `items` array, allowing for up to 3 levels of hierarchy (the menu editor caps nesting at depth 2, i.e. `MAX_DEPTH = 2` in `treeUtils.js`).
 - `id`: A unique identifier for the menu item within the menu.
 - `label`: The display text shown in the navigation.
 - `link`: The URL or page filename (e.g., `about.html` for internal pages, or a full URL for external links).
@@ -61,7 +66,7 @@ A typical menu JSON file (`main-menu.json`) has the following structure:
 
 1. **Project Creation**: When a project is created from a theme, all menu items linking to internal pages are automatically enriched with `pageUuid` based on matching page slugs.
 
-2. **User Selection**: When users select an internal page in the menu editor, both `link` and `pageUuid` are stored. Picking a collection item instead stores `collectionType` + `collectionItemUuid`.
+2. **User Selection**: When users select an internal page in the menu editor, both `link` and `pageUuid` are stored. Picking a collection item instead stores `collectionType` + `collectionItemUuid`. The picker options come from the `useLinkTargets` hook — a "Pages" group plus one group per `hasItemPages` collection, all sorted alphabetically.
 
 3. **Rendering/Export**: The menu resolver (`server/services/menuResolver.js`) resolves each item's `pageUuid` (or `collectionItemUuid`) to the current page/item slug, ensuring links stay up-to-date even after renames.
 
@@ -77,7 +82,7 @@ The frontend for menu management is split across several React components, provi
 
 - **`src/pages/Menus.jsx`**: Displays a list of all created menus for the active project. It lives at `/menus` inside the site workspace shell. From here, a user can navigate to add, edit settings, edit structure, duplicate, or delete a menu. The duplicate feature creates a complete copy of the menu with all nested items. Fully localized.
 - `src/pages/MenusAdd.jsx`: A page containing a form (`MenuForm.jsx`) to create a new menu by providing a name and description.
-- **`src/pages/MenusEdit.jsx`**: A page containing a form (`MenuForm.jsx`) to update an existing menu's name and description. Integrates `useFormNavigationGuard`.
+- **`src/pages/MenusEdit.jsx`**: A page containing a form (`MenuForm.jsx`) to update an existing menu's name and description. Integrates `useGuardedFormPage` (a wrapper around `useFormNavigationGuard`).
 - **`src/pages/MenuStructure.jsx`**: The core of the menu editing experience. It uses the `MenuEditor.jsx` component to provide a drag-and-drop interface for adding, editing, reordering, and nesting menu items. Fully localized interface.
 
 ### Route Context
@@ -121,10 +126,11 @@ The controller handles the logic for interacting with the menu JSON files on the
 - **File Operations**: Uses `fs-extra` to read the list of files in the `menus` directory, read individual menu files, write new ones, and delete them.
 - **ID Generation**: When a new menu is created, a unique, URL-friendly ID is generated from its name (via `generateUniqueSlug`). This ID is used as the filename (e.g., "Header Menu" becomes `header-menu.json`).
 - **CRUD Logic**:
-  - `createMenu`: Creates a new JSON file with a basic menu structure.
-  - `updateMenu`: Overwrites the existing menu file in place. The menu filename/ID remains stable even if the menu name changes.
+  - `createMenu`: Creates a new JSON file with a basic menu structure (including a freshly generated `uuid`).
+  - `updateMenu`: Overwrites the existing menu file in place. The menu filename/ID remains stable even if the menu name changes, and the existing `uuid` is preserved.
   - `duplicateMenu`: Creates a complete copy of an existing menu with:
     - **New unique ID**: Generated using `generateUniqueSlug()` from `slugHelpers`
+    - **New `uuid`**: The copy gets its own stable UUID
     - **New name**: Follows the suffix pattern `{original-name} (Copy)`, `{original-name} (Copy 2)`, etc.
     - **Deep cloning**: All menu data is completely duplicated
     - **Unique item IDs**: All nested menu items get new unique IDs to prevent conflicts

@@ -42,10 +42,12 @@ themes/arch/
 │   ├── scripts.js      # Core JS (header, navigation, sticky header scroll behavior)
 │   ├── reveal.js       # Scroll reveal animation engine
 │   ├── carousel.js     # Carousel initialization and navigation
+│   ├── countdown.js    # Countdown widget logic
 │   ├── lightbox.js     # Lightbox for gallery image viewing
 │   ├── masonry.js      # Masonry layout for gallery widgets
-│   └── video-modal.js  # Video popup modal (YouTube/Vimeo)
-├── widgets/            # 42 page widget components + 2 global
+│   ├── video-modal.js  # Video popup modal (YouTube/Vimeo)
+│   └── icons.json      # SVG icon definitions
+├── widgets/            # 52 page widget components + 2 global
 │   ├── accordion/
 │   ├── banner/
 │   ├── card-grid/
@@ -55,13 +57,17 @@ themes/arch/
 │       └── footer/
 ├── snippets/           # Reusable Liquid partials
 │   ├── icon.liquid     # SVG icon rendering from icons.json
-│   └── social-icons.liquid  # Social media link icons (16 platforms)
+│   ├── site-icons.liquid    # Favicon/site-icon head markup
+│   ├── social-icons.liquid  # Social media link icons (16 platforms)
+│   └── cs-class-row.liquid  # Class-schedule row partial
 ├── locales/            # Theme locale files (nested JSON per language)
-│   ├── en.json
-│   └── ...
-├── templates/          # Page template definitions
-└── menus/              # Navigation menu JSON files
+│   └── en.json
+├── collection-types/   # Theme-owned collection schemas (see core-collections.md)
+├── presets/            # Preset variants (each preset ships its own templates/ and menus/)
+└── templates/          # Page template definitions
 ```
+
+> Arch has no root `menus/` directory — navigation menus are provided per preset (`presets/{id}/menus/`).
 
 ### Asset Loading Order
 
@@ -118,7 +124,10 @@ All tokens are defined on `:root` in `base.css`. They fall into two categories:
 | `--font-size-3xl`  | `2.8rem` | 28px   |
 | `--font-size-4xl`  | `3.2rem` | 32px   |
 | `--font-size-5xl`  | `3.6rem` | 36px   |
-| `--font-size-6xl`  | `4rem`   | 40px   |
+| `--font-size-6xl`  | `4.4rem` | 44px   |
+| `--font-size-7xl`  | `5.4rem` | 54px   |
+| `--font-size-8xl`  | `6.8rem` | 68px   |
+| `--font-size-9xl`  | `8.4rem` | 84px   |
 
 #### Line Heights
 
@@ -156,7 +165,7 @@ These are static utilities. Actual heading/body weights come from the dynamic ty
 
 | Token                      | Default                   | @750px                    | @990px                    |
 | -------------------------- | ------------------------- | ------------------------- | ------------------------- |
-| `--section-padding-block`  | `var(--space-4xl)` (64px) | `var(--space-5xl)` (80px) | `var(--space-6xl)` (96px) |
+| `--section-padding-block`  | `var(--space-4xl)` (64px) | `var(--space-4xl)` (64px) | `var(--space-5xl)` (80px) |
 | `--section-padding-inline` | `var(--space-lg)` (24px)  | —                         | —                         |
 
 Section spacing scales automatically via nested media queries inside `:root`.
@@ -191,7 +200,6 @@ These tokens control shapes, card appearance, and spacing density. Unlike other 
 | `--radius-button` | `0` | Button border-radius (separate for pill override) |
 | `--radius-marker` | `0` | Numbered badge / marker radius — becomes `50%` (circle) on `corner-rounded` |
 | `--card-border` | `var(--border-width-thin) solid var(--border-color)` | Card border style |
-| `--card-shadow` | `none` | Card box-shadow |
 | `--spacing-scale` | `1` | Multiplier applied to card padding and widget container spacing |
 
 #### Color Tokens (Dynamic)
@@ -250,21 +258,21 @@ Default values for widget background control (overridden inline per-widget):
 
 ### Four Color Schemes
 
-The Arch theme ships with four color schemes:
+The Arch theme ships with four color schemes (setting values `standard-primary`, `standard-secondary`, `highlight-primary`, `highlight-secondary`):
 
-- **Standard**: default light surface
-- **Standard Accent**: light alternate surface using the standard palette
-- **Highlight**: default dark/emphasis surface
-- **Highlight Accent**: dark alternate surface using the highlight palette
+- **Standard Primary**: default light surface
+- **Standard Secondary**: light alternate surface using the standard palette (swapped background pair)
+- **Highlight Primary**: default dark/emphasis surface
+- **Highlight Secondary**: dark alternate surface using the highlight palette (swapped background pair)
 
 These are activated by CSS classes that remap the shorthand color tokens to point at different source variables.
 
-#### Standard Color Scheme (`.color-scheme-standard`)
+#### Standard Color Scheme (`.color-scheme-standard-primary`)
 
 Remaps all shorthand tokens to `--colors-standard_*` variables:
 
 ```css
-.color-scheme-standard {
+.color-scheme-standard-primary {
   --text-heading: var(--colors-standard_text_heading, #0f172a);
   --text-content: var(--colors-standard_text_content, #1f2937);
   --text-muted: var(--colors-standard_text_muted, #6b7280);
@@ -277,12 +285,12 @@ Remaps all shorthand tokens to `--colors-standard_*` variables:
 }
 ```
 
-#### Highlight Color Scheme (`.color-scheme-highlight`)
+#### Highlight Color Scheme (`.color-scheme-highlight-primary`)
 
 Remaps all shorthand tokens to `--colors-highlight_*` variables:
 
 ```css
-.color-scheme-highlight {
+.color-scheme-highlight-primary {
   --text-heading: var(--colors-highlight_text_heading, #ffffff);
   --text-content: var(--colors-highlight_text_content, #eaf3fc);
   --text-muted: var(--colors-highlight_text_muted, #64748b);
@@ -295,17 +303,19 @@ Remaps all shorthand tokens to `--colors-highlight_*` variables:
 }
 ```
 
-#### Accent Variants
+#### Secondary Variants
 
-The accent variants keep the same text/border/accent palette as their parent scheme but swap `--bg-primary` and `--bg-secondary` so widgets can get a filled alternate surface without introducing a second palette:
+The secondary variants keep the same text/border/accent palette as their parent scheme but swap `--bg-primary` and `--bg-secondary` so widgets can get a filled alternate surface without introducing a second palette (in `base.css` they redeclare the full token set, with only the backgrounds swapped):
 
 ```css
-.color-scheme-standard-accent {
+.color-scheme-standard-secondary {
+  /* same text/border/accent tokens as standard-primary, plus: */
   --bg-primary: var(--colors-standard_bg_secondary, #f1f5f9);
   --bg-secondary: var(--colors-standard_bg_primary, #ffffff);
 }
 
-.color-scheme-highlight-accent {
+.color-scheme-highlight-secondary {
+  /* same text/border/accent tokens as highlight-primary, plus: */
   --bg-primary: var(--colors-highlight_bg_secondary, #152a3e);
   --bg-secondary: var(--colors-highlight_bg_primary, #233c54);
 }
@@ -321,10 +331,10 @@ Every widget applies a color scheme class on its root element. All child element
 </section>
 ```
 
-When a widget uses any non-`standard` scheme, it also sets its background:
+When a widget uses any non-`standard-primary` scheme, it also sets its background:
 
 ```liquid
-{% unless widget.settings.color_scheme == 'standard' %}
+{% unless widget.settings.color_scheme == 'standard-primary' %}
   style="--widget-bg-color: var(--bg-primary);"
 {% endunless %}
 ```
@@ -336,12 +346,12 @@ When a widget uses any non-`standard` scheme, it also sets its background:
 | Setting ID              | Label                | Default   |
 | ----------------------- | -------------------- | --------- |
 | `standard_bg_primary`   | Primary Background   | `#ffffff` |
-| `standard_bg_secondary` | Secondary Background | `#f1f5f9` |
-| `standard_text_content` | Content Text         | `#1f2937` |
+| `standard_bg_secondary` | Secondary Background | `#f8fafc` |
+| `standard_text_content` | Content Text         | `#334155` |
 | `standard_text_heading` | Heading Text         | `#0f172a` |
 | `standard_text_muted`   | Muted Text           | `#6b7280` |
 | `standard_border_color` | Border Color         | `#e2e8f0` |
-| `standard_accent`       | Accent Color         | `#DE1877` |
+| `standard_accent`       | Accent Color         | `#0f172a` |
 | `standard_accent_text`  | Accent Text Color    | `#ffffff` |
 | `standard_rating_star`  | Rating Star Color    | `#fbbf24` |
 
@@ -349,14 +359,14 @@ When a widget uses any non-`standard` scheme, it also sets its background:
 
 | Setting ID               | Label                | Default   |
 | ------------------------ | -------------------- | --------- |
-| `highlight_bg_primary`   | Primary Background   | `#233c54` |
-| `highlight_bg_secondary` | Secondary Background | `#152a3e` |
-| `highlight_text_content` | Content Text         | `#eaf3fc` |
+| `highlight_bg_primary`   | Primary Background   | `#0f172a` |
+| `highlight_bg_secondary` | Secondary Background | `#020617` |
+| `highlight_text_content` | Content Text         | `#cbd5e1` |
 | `highlight_text_heading` | Heading Text         | `#ffffff` |
-| `highlight_text_muted`   | Muted Text           | `#64748b` |
-| `highlight_border_color` | Border Color         | `#526884` |
-| `highlight_accent`       | Accent Color         | `#DE1877` |
-| `highlight_accent_text`  | Accent Text Color    | `#ffffff` |
+| `highlight_text_muted`   | Muted Text           | `#94a3b8` |
+| `highlight_border_color` | Border Color         | `#334155` |
+| `highlight_accent`       | Accent Color         | `#ffffff` |
+| `highlight_accent_text`  | Accent Text Color    | `#0f172a` |
 | `highlight_rating_star`  | Rating Star Color    | `#fbbf24` |
 
 All 18 color settings have `"outputAsCssVar": true`, which causes the `{% theme_settings %}` tag to generate `--colors-{id}` CSS variables on `:root`.
@@ -371,14 +381,14 @@ Fonts are configured in `theme.json` via `font_picker` settings:
 
 | Setting ID     | Label        | Default Stack         | Default Weight |
 | -------------- | ------------ | --------------------- | -------------- |
-| `heading_font` | Heading Font | `"Fraunces", serif`   | 600            |
+| `heading_font` | Heading Font | `"Inter", sans-serif` | 600            |
 | `body_font`    | Body Font    | `"Inter", sans-serif` | 400            |
 
 The `{% theme_settings %}` tag generates these CSS variables:
 
 ```css
 :root {
-  --typography-heading_font-family: "Fraunces", serif;
+  --typography-heading_font-family: "Inter", sans-serif;
   --typography-heading_font-weight: 600;
   --typography-body_font-family: "Inter", sans-serif;
   --typography-body_font-weight: 400;
@@ -396,7 +406,7 @@ For `body_font` when the base weight is 400, the system looks up the font in `fo
 body {
   font-family: var(--typography-body_font-family, ...system-stack...);
   font-weight: var(--typography-body_font-weight, 400);
-  font-size: var(--font-size-base); /* 16px */
+  font-size: calc(var(--font-size-base) * var(--body-scale)); /* 16px × user scale */
   line-height: var(--line-height-normal); /* 1.5 */
   color: var(--text-content);
 }
@@ -464,7 +474,7 @@ Body-scale sizes (xs–xl) use `--body-scale`, heading-scale sizes (2xl–9xl) u
 | `.t-3xl` | `--font-size-3xl` (28px) | heading-scale + line-height-tight |
 | `.t-4xl` | `--font-size-4xl` (32px) | heading-scale + line-height-tight |
 | `.t-5xl` | `--font-size-5xl` (36px) | heading-scale + line-height-tight |
-| `.t-6xl` | `--font-size-6xl` (40px) | heading-scale + line-height-tight |
+| `.t-6xl` | `--font-size-6xl` (44px) | heading-scale + line-height-tight |
 | `.t-7xl` … `.t-9xl` | `--font-size-7xl` … `--font-size-9xl` | heading-scale + line-height-tight |
 
 #### Weight Modifiers
@@ -530,13 +540,11 @@ The spacing scale is based on a 4px/8px rhythm. All spacing values use rem with 
 | Tight gaps (inline items)          | `--space-xs` (8px)   |
 | Form label-to-input gaps           | `--space-xs` (8px)   |
 | General gaps                       | `--space-md` (16px)  |
-| Card padding (mobile)              | `--space-lg` (24px)  |
-| Card padding (tablet)              | `--space-xl` (32px)  |
-| Card padding (desktop)             | `--space-2xl` (40px) |
-| Section header bottom margin       | `--space-2xl` (40px) |
-| Section vertical padding (mobile)  | `--space-4xl` (64px) |
-| Section vertical padding (tablet)  | `--space-5xl` (80px) |
-| Section vertical padding (desktop) | `--space-6xl` (96px) |
+| Card padding (mobile)              | `--space-lg` (24px), × `--spacing-scale` |
+| Card padding (tablet+)             | `--space-xl` (32px), × `--spacing-scale` |
+| Section header bottom margin       | `--space-2xl` (40px), × `--spacing-scale` |
+| Section vertical padding (mobile/tablet) | `--space-4xl` (64px) |
+| Section vertical padding (desktop) | `--space-5xl` (80px) |
 
 ---
 
@@ -578,7 +586,7 @@ Alternative for widgets with non-default backgrounds. Uses `padding-block` inste
 Usage pattern in templates:
 
 ```liquid
-<div class="widget-container {% if widget.settings.color_scheme == 'highlight' %}widget-container-padded{% endif %}">
+<div class="widget-container {% unless widget.settings.color_scheme == 'standard-primary' %}widget-container-padded{% endunless %}">
 ```
 
 #### `.widget-header`
@@ -709,7 +717,7 @@ The number of visible columns at desktop is set inline via `--carousel-cols`:
 
 #### JavaScript (`carousel.js`)
 
-Loaded globally via `layout.liquid`. Auto-initializes all `.carousel-container` elements:
+A shared theme asset, conditionally enqueued by each carousel-capable widget (`{% enqueue_script src: "carousel.js", defer: true, location: "footer", priority: 40, theme: true %}`) and rendered by `{% footer_assets %}`; the enqueue system deduplicates it. Auto-initializes all `.carousel-container` elements:
 
 - Prev/next buttons scroll by one item width + gap
 - Buttons auto-disable at scroll boundaries
@@ -761,14 +769,13 @@ Loaded globally via `layout.liquid`. Auto-initializes all `.carousel-container` 
   flex-direction: column;
   background-color: var(--bg-primary);
   border: var(--card-border);
-  box-shadow: var(--card-shadow);
   border-radius: var(--radius-md);
   padding: calc(var(--space-lg) * var(--spacing-scale)); /* Responsive, scaled by density */
-  transition: border-color var(--transition-speed-normal), box-shadow var(--transition-speed-normal);
+  transition: border-color var(--transition-speed-normal);
 }
 ```
 
-Card appearance is driven by the [style tokens](#style-tokens-class-driven) (`--card-border`, `--card-shadow`, `--radius-md`, `--spacing-scale`), which are set by body classes from theme style settings.
+Card appearance is driven by the [style tokens](#style-tokens-class-driven) (`--card-border`, `--radius-md`, `--spacing-scale`), which are set by body classes from theme style settings.
 
 #### Card Sub-Components
 
@@ -1059,7 +1066,7 @@ The Arch theme uses **body classes** to implement global style settings that aff
 | --- | --- |
 | `spacing-compact` | `--spacing-scale: 0.8` — tighter card padding and widget spacing |
 | `spacing-default` | `--spacing-scale: 1` — standard spacing |
-| `spacing-airy` | `--spacing-scale: 1.25` — more generous breathing room |
+| `spacing-airy` | `--spacing-scale: 1.2` — more generous breathing room |
 
 #### Button Shape (`buttons-*`)
 
@@ -1077,7 +1084,6 @@ Widgets should reference the style tokens rather than hardcoding values:
 /* Correct — responds to style settings */
 .my-card {
   border: var(--card-border);
-  box-shadow: var(--card-shadow);
   border-radius: var(--radius-md);
   padding: calc(var(--space-lg) * var(--spacing-scale));
 }
@@ -1128,7 +1134,6 @@ Widgets with custom token usage:
 | image-callout | `.callout-image` / `.callout-content` | `--radius-lg` / `--radius-md` |
 | bento-grid | bento items | `--radius-lg` |
 | countdown | `.style-cards .countdown-unit` | `--radius-lg` |
-| contact-form | `.form-status` | `--radius-md` |
 | comparison-slider | wrapper | `--radius-md` |
 | video-embed | iframe | `--radius-md` |
 | map | `.map-container` | `--radius-md` |
@@ -1226,8 +1231,8 @@ An additional breakpoint at `1200px` exists in the documentation but is not used
 | Element         | Mobile          | Tablet (750px+) | Desktop (990px+)              |
 | --------------- | --------------- | --------------- | ----------------------------- |
 | Grid columns    | 1               | 2               | `var(--grid-cols-desktop, 3)` |
-| Section padding | 64px            | 80px            | 96px                          |
-| Card padding    | 24px            | 32px            | 40px                          |
+| Section padding | 64px            | 64px            | 80px                          |
+| Card padding    | 24px            | 32px            | 32px                          |
 | Card title size | 18px            | 18px            | 20px                          |
 | Navigation      | Slide-out panel | Slide-out panel | Horizontal dropdown           |
 | Header contact  | Hidden          | Hidden          | Visible                       |
@@ -1247,8 +1252,8 @@ Settings with `"outputAsCssVar": true` (colors) and `font_picker` types are cand
 {
   "type": "color",
   "id": "standard_accent",
-  "label": "tTheme:settings.colors.standard_accent",
-  "default": "#DE1877",
+  "label": "tTheme:global.colors.settings.standard_accent.label",
+  "default": "#0f172a",
   "outputAsCssVar": true
 }
 ```
@@ -1268,9 +1273,9 @@ The `{% theme_settings %}` Liquid tag reads all global settings, and for each on
 <style id="theme-settings-styles">
   :root {
     --colors-standard_bg_primary: #ffffff;
-    --colors-standard_accent: #de1877;
-    --colors-highlight_bg_primary: #233c54;
-    --typography-heading_font-family: "Fraunces", serif;
+    --colors-standard_accent: #0f172a;
+    --colors-highlight_bg_primary: #0f172a;
+    --typography-heading_font-family: "Inter", sans-serif;
     --typography-heading_font-weight: 600;
     --typography-body_font-family: "Inter", sans-serif;
     --typography-body_font-weight: 400;
@@ -1288,7 +1293,7 @@ The design system reads the injected variables via `var()` with fallbacks:
 :root {
   --accent: var(--colors-standard_accent, #0d47b7);
 }
-.color-scheme-highlight {
+.color-scheme-highlight-primary {
   --accent: var(--colors-highlight_accent, #de1877);
 }
 body {
@@ -1317,9 +1322,9 @@ Every widget follows this pattern:
 <section
   id="{{ widget.id }}"
   class="widget widget-type-{name} widget-{{ widget.id }} color-scheme-{{ widget.settings.color_scheme }} {modifiers}"
-  {% if widget.settings.color_scheme == 'highlight' %}
+  {% unless widget.settings.color_scheme == 'standard-primary' %}
     style="--widget-bg-color: var(--bg-primary);"
-  {% endif %}
+  {% endunless %}
   data-widget-id="{{ widget.id }}"
   data-widget-type="{name}"
   {% if widget.index != null %}data-widget-index="{{ widget.index }}"{% endif %}
@@ -1360,7 +1365,7 @@ This uses CSS nesting (`&`) with the unique `.widget-{{ widget.id }}` class as t
 ### Container Pattern
 
 ```liquid
-<div class="widget-container {% if widget.settings.color_scheme == 'highlight' %}widget-container-padded{% endif %}">
+<div class="widget-container {% unless widget.settings.color_scheme == 'standard-primary' %}widget-container-padded{% endunless %}">
   <!-- Widget content here -->
 </div>
 ```
@@ -1407,6 +1412,6 @@ Apply `.reveal` + direction class to elements, with staggered delays using `--re
 
 ## Available Widgets (Arch Theme)
 
-47 widgets (45 page + 2 global): accordion, banner, bento-grid, card-grid, comparison-slider, comparison-table, contact-form, content-switcher, countdown, embed, event-list, features-split, gallery, icon-card-grid, icon-list, image, image-callout, image-hotspots, image-tabs, image-text, job-listing, key-figures, logo-cloud, map, masonry-gallery, numbered-cards, numbered-service-list, priced-list, pricing, profile-grid, project-showcase, rich-text, schedule-table, scrolling-text, slideshow, social-icons, split-content, split-hero, team-highlight, testimonial-hero, testimonials, timeline, trust-bar, video-embed, video-popup, header (global), footer (global).
+54 widgets (52 page + 2 global): accordion, action-bar, banner, bento-grid, card-grid, checkerboard, class-schedule, comparison-slider, comparison-table, contact-details, content-switcher, countdown, embed, event-list, features-split, gallery, icon-card-grid, icon-list, image, image-callout, image-hotspots, image-tabs, image-text, job-listing, key-figures, logo-cloud, map, masonry-gallery, numbered-cards, numbered-service-list, priced-list, pricing, profile-grid, project-showcase, resource-list, rich-text, schedule-table, scrolling-text, slideshow, sliding-panels, social-icons, split-content, split-hero, steps, team-highlight, testimonial-hero, testimonial-slider, testimonials, timeline, trust-bar, video-embed, video-popup, header (global), footer (global).
 
 Many card-based widgets (card-grid, icon-card-grid, profile-grid, testimonials, gallery, pricing, icon-list, key-figures, logo-cloud, numbered-cards, project-showcase) support a `layout` setting to switch between grid and carousel display modes. See [Carousel Layout](#carousel-layout) for details.

@@ -140,10 +140,10 @@ Themes/presets without a `media/` folder are unaffected (the step is skipped). R
 
 ### 1. `server/controllers/themeController.js`
 
-- **Add `resolvePresetPaths(themeId, presetId)` helper**: Returns `{ templatesDir, menusDir, settingsOverrides }` with fallback logic
-- **Add `getThemePresets(req, res)` endpoint**: Reads `presets/presets.json`, returns array of preset objects with `isDefault` flag
+- **Add `resolvePresetPaths(themeId, presetId)` helper**: Returns `{ templatesDir, menusDir, settingsOverrides, collectionsDir, mediaDir }` with fallback logic
+- **Add `getThemePresets(req, res)` endpoint**: Reads `presets/presets.json`, returns array of preset objects with `isDefault` and `hasScreenshot` flags
 - **Modify `copyThemeToProject`**: Add `"presets"` to the `allExcludes` list so preset data is never copied into projects
-- **Modify `getAllThemes`**: Add `presetCount` to each theme's response object (read from `presets/presets.json` if it exists)
+- **Modify `getAllThemes`**: Add a `presets` count to each theme's response object (read from `presets/presets.json` if it exists)
 
 ### 2. `server/controllers/projectController.js`
 
@@ -171,10 +171,10 @@ Themes/presets without a `media/` folder are unaffected (the step is skipped). R
 - Default preset is pre-selected
 - `preset` value included in form data on submit
 
-### 6. `src/queries/projectManager.js` (or new `themeManager.js`)
+### 6. `src/queries/themeManager.js`
 
-- Add `getThemePresets(themeId)` fetch function
-- Add `getPresetScreenshotUrl(themeId, presetId)` URL helper
+- Add `getThemePresets(themeId)` fetch function (returns `{ default, presets }`)
+- Add `getPresetScreenshotUrl(themeId, presetId, hasScreenshot)` URL helper (falls back to the theme's root screenshot when `hasScreenshot` is false)
 
 ## Key implementation details
 

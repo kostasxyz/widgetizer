@@ -307,11 +307,11 @@ This file is a **prompt library consumed directly by `scripts/generate-images.js
 ```json
 [
   { "file": "hero.jpg", "width": 1920, "height": 1080, "prompt": "..." },
-  { "file": "services/emergency.jpg", "width": 1024, "height": 768, "prompt": "..." }
+  { "file": "services-emergency.jpg", "width": 1024, "height": 768, "prompt": "..." }
 ]
 ```
 
-- `file` — output filename, can include subdirectory (e.g. `"testimonials/melissa.jpg"`)
+- `file` — output filename, flat (no path separators — see Filename rules below)
 - `width` / `height` — integers in pixels; see §11.3 for dimension rules
 - `prompt` — one prose paragraph. Cover subject, setting, lighting, composition, and things to avoid — but fold it into natural sentences, not labeled sections.
 
@@ -343,8 +343,6 @@ After Phase 3 templates are written, **always** create `docs-llms/preset-plans/{
 This is the bridge between the image prompt library (Phase 2) and the template JSON (Phase 3). Because template JSON can't reference image files, the user has no way to know which generated image belongs where without this map.
 
 **Required shape:** one section per page, each with a table mapping widget ID → block ID → image filename → dimensions. List widgets on the page that have no images as a trailing note. At the end, include a count-by-category table summing to the total, and a list of user-supplied images that are outside the generator pipeline (logos, favicon, logo-cloud entries).
-
-See `docs-llms/preset-plans/uplink-images-usage.md` for the reference shape.
 
 ### Phase 3: Build
 

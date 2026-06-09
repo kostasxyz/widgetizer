@@ -6,6 +6,17 @@ This document serves as a comprehensive index to all documentation in the Widget
 
 ## 📚 Core System Documentation
 
+### **[project-overview.md](project-overview.md)** - Project Overview
+
+**Purpose**: High-level orientation — what Widgetizer is, the tech stack, and the key concepts at a glance **When to use**:
+
+- First read when getting oriented in the codebase
+- Quick refresher on the content model and major subsystems
+
+**Key topics**: Product summary, stack, hybrid storage model, key concepts (projects, pages, widgets, themes, collections, export)
+
+---
+
 ### **[theming.md](theming.md)** - Theme Development & Structure
 
 **Purpose**: Complete guide to creating and customizing themes **When to use**:
@@ -93,6 +104,39 @@ This document serves as a comprehensive index to all documentation in the Widget
 
 ---
 
+### **[theme-preset-file-format.md](theme-preset-file-format.md)** - Preset File Format Reference
+
+**Purpose**: Exact file-level reference for authoring a preset (template JSON shape, menus, settings overrides, registry entry) **When to use**:
+
+- Writing or validating preset files by hand or via generation
+- Looking up the required keys of preset templates (`widgets`/`widgetsOrder`/`name`/`slug`), menu files, or `presets.json`
+
+**Key topics**: Template JSON shape, widget/block instance format, menus, `settings.json` overrides, footer/header block types, SEO fields
+
+---
+
+### **[theme-preset-process.md](theme-preset-process.md)** - Preset Creation Process
+
+**Purpose**: The end-to-end workflow for building and shipping a new theme preset **When to use**:
+
+- Creating a new preset from scratch (content plan → files → images → screenshot → demo)
+- Syncing preset work into a local project for testing
+
+**Key topics**: Step-by-step preset workflow, sync scripts (`theme:sync`, `preset:sync`), screenshots, live demo URLs, checklist
+
+---
+
+### **[theme-preset-generator.md](theme-preset-generator.md)** - Preset Image Generation
+
+**Purpose**: Conventions and tooling for generating preset images (`{preset-id}-images.json` + `scripts/generate-images.js`) **When to use**:
+
+- Authoring image manifests for a preset
+- Running or modifying the image generation script
+
+**Key topics**: Flat image manifest format (file/width/height/prompt), generation script behavior, image size variants, prompt conventions
+
+---
+
 ### **[core-widgets.md](core-widgets.md)** - Core Widgets System
 
 **Purpose**: Explains the built-in, theme-agnostic widgets that ship with Widgetizer **When to use**:
@@ -128,7 +172,18 @@ This document serves as a comprehensive index to all documentation in the Widget
 - Implementing consistent UI behaviors (toasts, redirects)
 - Reviewing UX guidelines (consistency, feedback, protection)
 
-**Key topics**: Project/Page/Menu management workflows, toast notifications, redirect patterns, confirmation modals
+**Key topics**: Project/Page/Menu/Collection-item management workflows, project export/import, toast notifications, redirect patterns, confirmation modals
+
+---
+
+### **[core-design-system.md](core-design-system.md)** - App UI Design System
+
+**Purpose**: The admin app's own UI design language (not theme CSS) — Tailwind conventions, shared components, focus/color patterns **When to use**:
+
+- Building or restyling admin UI components
+- Keeping new UI consistent with existing buttons, forms, and focus states
+
+**Key topics**: Tailwind 4 conventions, Button/IconButton variants, form controls, focus-visible rings, lucide icons
 
 ---
 
@@ -295,7 +350,7 @@ This document serves as a comprehensive index to all documentation in the Widget
 - Building media management interfaces
 - Creating consistent user interactions
 
-**Key topics**: useConfirmationModal, useNavigationGuard, usePageSelection, media hooks, export hooks, app settings hooks
+**Key topics**: useConfirmationModal/useConfirmationAction, useNavigationGuard, useGuardedFormPage, usePageSelection, media hooks, export hooks, app settings hooks, collections & link target hooks
 
 ---
 
@@ -372,6 +427,24 @@ Primary docs: `core-themes.md`, `core-page-editor.md` Secondary: `core-media.md`
 - Code signing and distribution
 
 **Key topics**: Development workflow, production build, runtime paths, app icons, distribution, code signing
+
+---
+
+## 🧪 Plans & Explorations
+
+These are **not** reference docs — they capture plans and design explorations and may describe things that do not exist yet.
+
+### **[future-collection-item-editor.md](future-collection-item-editor.md)** - Composable Collection Item Templates (exploration)
+
+Design notes for making collection item-page layouts user-composable in the page editor (blocks model). Deferred — trigger and verdict recorded in its §8.
+
+### **[future-mcp.md](future-mcp.md)** - MCP Integration (exploration)
+
+Exploration notes for exposing Widgetizer functionality over MCP.
+
+### **[mvp-oss-form-widget.md](mvp-oss-form-widget.md)** - Hosted Forms / Core Form Widget
+
+Plan and decisions for the `core-form` widget and the export-time `widgetizer.forms.json` manifest.
 
 ---
 

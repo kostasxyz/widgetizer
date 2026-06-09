@@ -65,12 +65,27 @@ const openDeleteConfirmation = (itemId, itemName) => {
 
 #### Used In
 
-- Media file deletion (`useMediaSelection`)
-- Page deletion and bulk operations (`Pages.jsx`)
-- Project deletion (`Projects.jsx`)
-- Menu deletion (`Menus.jsx`)
-- Export deletion (`ExportHistoryTable.jsx`)
-- Widget deletion (`PageEditor.jsx`)
+- Media file deletion (`useMediaSelection`) — the only remaining direct consumer
+- All list pages with destructive actions consume it indirectly via `useConfirmationAction` (see below)
+
+### `useConfirmationAction` Hook (`src/hooks/useConfirmationAction.js`)
+
+A thin wrapper around `useConfirmationModal` that also builds the ready-to-render `<ConfirmationModal />` element, removing repeated modal-wiring boilerplate on list pages with destructive actions. Pages still own their mutation logic and localized copy.
+
+#### API Reference
+
+**Parameters:**
+
+- `onConfirm` (function): Callback executed when the user confirms; receives the modal `data`.
+
+**Returns:**
+
+- `confirm(options)` (function): Opens the confirmation dialog (same options as `openModal`)
+- `confirmationModal` (React element): A ready-to-render `<ConfirmationModal />` wired to the hook's state
+
+#### Used In
+
+- `Pages.jsx` (page deletion and bulk operations), `Projects.jsx` (project deletion), `Menus.jsx` (menu deletion), `Themes.jsx` (theme deletion), `CollectionItems.jsx` (item deletion), `ExportHistoryTable.jsx` (export deletion), `CollectionItemForm.jsx` (discarding archived drafts)
 
 ## Navigation & Protection Hooks
 
@@ -129,7 +144,7 @@ function PageEditor() {
 
 ### `useFormNavigationGuard` Hook (`src/hooks/useFormNavigationGuard.js`)
 
-A simplified navigation guard hook specifically designed for form pages with a single bool boolean parameter.
+A simplified navigation guard hook specifically designed for form pages, driven by a boolean dirty flag.
 
 #### Purpose
 
@@ -157,6 +172,7 @@ function ProjectForm() {
 **Parameters:**
 
 - `hasUnsavedChanges` (boolean): Whether the form has unsaved changes
+- `skipRef` (React ref, optional): When `skipRef.current` is `true`, the guard is bypassed — used for intentional programmatic navigation after a successful save
 
 **Returns:**
 
@@ -171,12 +187,32 @@ function ProjectForm() {
 
 #### Used In
 
-- Form pages throughout the application:
-  - `AppSettings.jsx`
-  - `ProjectsAdd.jsx`, `ProjectsEdit.jsx`
-  - `PagesAdd.jsx`, `PagesEdit.jsx`
-  - Theme settings forms
-  - Menu editing forms
+- Form pages throughout the application consume it indirectly via `useGuardedFormPage` (see below), which is its only direct consumer.
+
+### `useGuardedFormPage` Hook (`src/hooks/useGuardedFormPage.jsx`)
+
+Standardizes the shell around guarded form pages: wires `useFormNavigationGuard` with an internal skip-ref so pages don't repeat the skip-ref/navigate/dirty-title boilerplate. Pages keep ownership of their dirty state, submission logic, and toast behavior.
+
+#### API Reference
+
+**Parameters:**
+
+- `hasUnsavedChanges` (boolean): Whether the form has unsaved changes
+
+**Returns:**
+
+- `navigateSafely(to, options)` (function): Navigate without triggering the guard (use after a successful save or on cancel)
+- `getDirtyTitle(title)` (function): Wraps a title string/node with the pink dirty-dot indicator
+
+For stay-in-place pages (`Settings.jsx`, `AppSettings.jsx`) that don't navigate after save, `navigateSafely` is simply ignored — the guard still works from the boolean alone.
+
+#### Used In
+
+- `AppSettings.jsx`, `Settings.jsx`
+- `ProjectsAdd.jsx`, `ProjectsEdit.jsx`
+- `PagesAdd.jsx`, `PagesEdit.jsx`
+- `MenusAdd.jsx`, `MenusEdit.jsx`, `MenuStructure.jsx`
+- `CollectionItemAdd.jsx`, `CollectionItemEdit.jsx`
 
 ## Selection & State Management Hooks
 
@@ -235,6 +271,30 @@ function PagesList() {
 - **Pages Interface**: Used in `Pages.jsx` for bulk page operations
 - **Visual Feedback**: Integrates with UI to show selected states
 - **Bulk Operations**: Powers bulk deletion and other multi-page actions
+
+## Collections & Link Target Hooks
+
+### `useCollections` Hook (`src/hooks/useCollections.js`)
+
+Loads the active project's collection schemas (`getCollectionSchemas`). Uses a per-project module-level cache (1-minute TTL) with in-flight deduplication; a project switch transparently fetches fresh data.
+
+**Returns:** `{ schemas, loading, error, refetch }`
+
+### `useCollectionItems` Hook (`src/hooks/useCollectionItems.js`)
+
+Loads the items of a single collection type for the active project. Unlike schemas, item lists are not cached across navigations — list pages mutate them frequently, so each mount fetches fresh and exposes `refetch()` for after-write refreshes.
+
+**Parameters:** `type` (collection type slug), optional `params` (sort, invalid, limit, offset)
+
+**Returns:** `{ items, loading, error, refetch }`
+
+### `useLinkTargets` Hook (`src/hooks/useLinkTargets.js`)
+
+Loads the link-target options for the active project — all pages plus the items of every `hasItemPages` collection — as a flat, grouped option list (a "Pages" group plus one group per collection), with groups and entries sorted alphabetically. Each option carries a stable `value` (uuid) so stored references survive renames; collection-item options also carry `collectionType`/`slugPrefix`/`slug`. Used by the menu editor's link picker and the `link` setting input.
+
+Module-cached per project (1-minute TTL) so the many link inputs a page can host don't each refetch. Also exports `invalidateLinkTargetsCache(projectId)` to drop the cache after creating, renaming, or deleting a page or collection item.
+
+**Returns:** `{ options, loading }`
 
 ## Media Management Hooks
 
@@ -351,7 +411,7 @@ Removes repeated `useAppSettings()` wiring from list/history surfaces that only 
 
 #### Used In
 
-- Main list/history surfaces such as `Projects.jsx`, `Pages.jsx`, `Menus.jsx`, `ExportHistoryTable.jsx`, and media list rows
+- Main list/history surfaces such as `Projects.jsx`, `Pages.jsx`, `Menus.jsx`, `CollectionItems.jsx`, `ExportHistoryTable.jsx`, and media list rows
 
 ## Theme Locale Hook
 
@@ -375,12 +435,13 @@ Widget `schema.json` files typically use `tTheme:` prefixed keys for displayName
 - 5-minute staleness window before re-fetching
 - **Stale-while-revalidate**: When the cache expires, stale data continues to be served while the re-fetch happens in the background. This prevents a flash of raw keys between cache expiry and fetch completion.
 - Single in-flight promise deduplication to prevent duplicate API calls
+- **Developer mode bypass**: When developer mode is enabled in App Settings, the cache is always treated as stale so locale edits show up immediately
 - Backend endpoint: `GET /api/themes/project/:projectId/locales/:lang`
 - Locale source: `data/projects/<project>/locales/`, merged with `src/core/widgets/locales/`
 
 #### Used In
 
-10 editor components including SettingsPanel, ThemeSelector, PreviewPanel, BlockList, WidgetList, WidgetSelector, BlockSelector, WidgetItem, BlockItem, and EditorTopBar.
+12 components including both SettingsPanel components (`settings/` and `pageEditor/`), SettingsRenderer, ThemeSelector, ThemeSettingsSection, PreviewPanel, WidgetSelector, BlockSelector, WidgetItem, FixedWidgetItem, BlockItem, and CollectionItemForm.
 
 ---
 

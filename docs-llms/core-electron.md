@@ -11,7 +11,7 @@ npm run electron:dev
 ```
 
 - API server: `http://localhost:3001`
-- Vite dev server: `http://localhost:5173` (or `VITE_DEV_SERVER_URL` when provided)
+- Vite dev server: `http://localhost:3000` (the `electron:dev` script passes `VITE_DEV_SERVER_URL=http://localhost:3000`; `electron/main.js` falls back to `http://localhost:5173` only when that variable is unset)
 - Electron loads the Vite URL
 
 Use this when testing Electron-specific features (menus, native dialogs). For regular development, use `npm run dev:all` and open `http://localhost:3000` in your browser.
@@ -27,7 +27,7 @@ The production frontend bundle is same-origin: it talks to whichever Express ori
 VITE_API_URL=
 ```
 
-If this file is missing, the bundle bakes in `VITE_API_URL` from `.env` (typically `http://localhost:3001`) and every `/api/*` call in the packaged app fails because the bundled server runs on a dynamic port. The build scripts prompt for confirmation if `.env.production` is missing.
+If this file is missing, the bundle bakes in `VITE_API_URL` from `.env` (typically `http://localhost:3001`) and every `/api/*` call in the packaged app fails because the bundled server runs on a dynamic port. If `.env.production` is missing, the build script (`scripts/build-electron.mjs`) offers to create it — and auto-creates it with an empty `VITE_API_URL` in non-interactive shells.
 
 Build the React frontend and package the Electron app:
 
@@ -68,21 +68,28 @@ dist-electron/
 ├── mac/
 │   └── Widgetizer.app               # Intel Macs
 ├── Widgetizer-x.x.x-arm64.dmg      # Apple Silicon distribution
-└── Widgetizer-x.x.x.dmg            # Intel distribution
+├── Widgetizer-x.x.x.dmg            # Intel distribution
+├── Widgetizer-x.x.x-arm64-mac.zip  # Apple Silicon auto-update artifact
+├── Widgetizer-x.x.x-mac.zip        # Intel auto-update artifact
+└── latest-mac.yml                   # electron-updater feed metadata
 ```
+
+(`.blockmap` files accompany the `.dmg`/`.zip` artifacts for delta updates.)
 
 ### Windows Output
 
 ```
 dist-electron/
 ├── win-unpacked/
-│   └── Widgetizer.exe
-└── Widgetizer-x.x.x-win.zip
+│   └── Widgetizer.exe               # Unpacked app (not for distribution)
+├── Widgetizer-Setup-x.x.x.exe      # NSIS installer (artifact name forced in builder.config.mjs)
+├── Widgetizer-Setup-x.x.x.exe.blockmap
+└── latest.yml                       # electron-updater feed metadata
 ```
 
 ## Windows Signing Status
 
-Windows signing is configured in `package.json` under `build.win.signtoolOptions`.
+Windows signing is configured in `electron/builder.config.mjs` under `win.signtoolOptions` (the whole electron-builder config lives in that file, not in `package.json`). The unsigned build scripts set `WIN_UNSIGNED=1`, which strips `signtoolOptions` from the config.
 
 Working configuration details:
 
@@ -93,7 +100,7 @@ Working configuration details:
 Important `electron-builder` 26 note:
 
 - Windows signing options such as `certificateSubjectName`, `signingHashAlgorithms`, and `rfc3161TimeStampServer` must be nested under `win.signtoolOptions`.
-- Putting those keys directly under `build.win` causes schema validation errors and the build fails before signing starts.
+- Putting those keys directly under `win` causes schema validation errors and the build fails before signing starts.
 
 How signing was verified:
 
@@ -122,7 +129,7 @@ Access these from the app menu: **File → Open Data Folder** or **File → Open
 
 - The editor preview is opened through a dedicated Electron `BrowserWindow` rather than replacing the editor view.
 - Repeated preview opens reuse the same preview window if it already exists.
-- The preview window is maximized and focused when opened or reused.
+- The preview window matches the editor window's size (offset by 50px) and is focused when opened or reused; a minimized preview window is restored first.
 - In web builds, the editor uses a named browser tab for the same reuse behavior.
 
 ## App Icon
@@ -158,7 +165,7 @@ iconutil -c icns icon.iconset -o icon.icns
 | --------------------------- | -------------------------------- |
 | Apple Silicon (M1/M2/M3/M4) | `Widgetizer-x.x.x-arm64.dmg`    |
 | Intel Mac                   | `Widgetizer-x.x.x.dmg`          |
-| Windows                     | `Widgetizer-x.x.x-win.zip`      |
+| Windows                     | `Widgetizer-Setup-x.x.x.exe`    |
 
 ### First-run instructions for recipients (macOS)
 
@@ -208,18 +215,21 @@ export $(cat .env.mac | xargs) && npm run electron:build:mac
 4. Notarization typically takes 5–30 minutes
 5. `electron-builder` then staples the notarization ticket to the `.dmg`
 
-**Active `package.json` build config:**
+**Active build config (`electron/builder.config.mjs`):**
 
-```json
-"mac": {
-  "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
-  "category": "public.app-category.productivity",
-  "hardenedRuntime": true,
-  "gatekeeperAssess": false,
-  "entitlements": "electron/entitlements.mac.plist",
-  "entitlementsInherit": "electron/entitlements.mac.plist"
+```js
+mac: {
+  target: [
+    { target: "dmg", arch: ["arm64", "x64"] },
+    { target: "zip", arch: ["arm64", "x64"] },
+  ],
+  category: "public.app-category.productivity",
+  hardenedRuntime: true,
+  gatekeeperAssess: false,
+  entitlements: "electron/entitlements.mac.plist",
+  entitlementsInherit: "electron/entitlements.mac.plist",
 },
-"afterSign": "electron/notarize.cjs"
+afterSign: "electron/notarize.cjs",
 ```
 
 **Entitlements (`electron/entitlements.mac.plist`):**
@@ -281,7 +291,7 @@ The `latest-mac.yml` and `latest.yml` files are critical — electron-updater re
 
 ### Local Windows Update Test
 
-For local Windows testing, the app can override the normal GitHub feed by launching the installed app with `--updater-url=http://127.0.0.1:5500`.
+For local Windows testing, the app can override the normal GitHub feed by launching the installed app with `--updater-url=http://127.0.0.1:5500` (the `ELECTRON_UPDATER_URL` env var works too and takes precedence).
 
 Use this flow:
 

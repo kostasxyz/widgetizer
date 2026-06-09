@@ -54,10 +54,10 @@ Every widget follows this structure:
 ```liquid
 <section
   id="{{ widget.id }}"
-  class="widget widget-{name} widget-{{ widget.id }}"
-  {% if widget.settings.background == 'secondary' %}
-    style="--widget-bg-color: var(--bg-secondary);"
-  {% endif %}
+  class="widget widget-{name} widget-{{ widget.id }} color-scheme-{{ widget.settings.color_scheme }}"
+  {% unless widget.settings.color_scheme == 'standard-primary' %}
+    style="--widget-bg-color: var(--bg-primary);"
+  {% endunless %}
   data-widget-id="{{ widget.id }}"
   data-widget-type="{widget-name}"
 >
@@ -69,7 +69,7 @@ Every widget follows this structure:
     }
   </style>
 
-  <div class="widget-container {% if widget.settings.background == 'secondary' %}widget-container-padded{% endif %}">
+  <div class="widget-container {% unless widget.settings.color_scheme == 'standard-primary' %}widget-container-padded{% endunless %}">
     <!-- Optional: Widget Header -->
     {% if widget.settings.title != blank or widget.settings.description != blank or widget.settings.eyebrow != blank %}
       <div class="widget-header">
@@ -213,7 +213,10 @@ Your theme should define a consistent set of CSS custom properties (design token
 --font-size-3xl: 2.8rem; /* 28px */
 --font-size-4xl: 3.2rem; /* 32px */
 --font-size-5xl: 3.6rem; /* 36px */
---font-size-6xl: 4rem; /* 40px */
+--font-size-6xl: 4.4rem; /* 44px */
+--font-size-7xl: 5.4rem; /* 54px */
+--font-size-8xl: 6.8rem; /* 68px */
+--font-size-9xl: 8.4rem; /* 84px */
 ```
 
 ### Line Heights & Font Weights
@@ -234,25 +237,23 @@ Define semantic color variables that map to your theme's global settings:
 
 ```css
 /* Text Colors */
---text-content: var(--colors-text_content, #333);
---text-heading: var(--colors-text_heading, #000);
---text-muted: var(--colors-text_muted, #666);
+--text-content: var(--colors-standard_text_content, #333);
+--text-heading: var(--colors-standard_text_heading, #000);
+--text-muted: var(--colors-standard_text_muted, #666);
 
 /* Background Colors */
---bg-primary: var(--colors-bg_primary, #fff);
---bg-secondary: var(--colors-bg_secondary, #f9f9f9);
+--bg-primary: var(--colors-standard_bg_primary, #fff);
+--bg-secondary: var(--colors-standard_bg_secondary, #f9f9f9);
 
 /* Accent Colors */
---accent: var(--colors-accent, #000);
---accent-text: var(--colors-accent_text, #fff);
-
-/* Inverse Colors (for dark schemes) */
---inverse-bg: var(--colors-inverse_bg, #000);
---inverse-text: var(--colors-inverse_text, #fff);
+--accent: var(--colors-standard_accent, #0d47b7);
+--accent-text: var(--colors-standard_accent_text, #fff);
 
 /* Border */
---border-color: var(--colors-border_color, #e0e0e0);
+--border-color: var(--colors-standard_border_color, #e0e0e0);
 ```
+
+Dark surfaces come from the color scheme classes (`.color-scheme-highlight-primary` / `.color-scheme-highlight-secondary`), which remap these same shorthand tokens to the `--colors-highlight_*` variables — there are no separate "inverse" tokens.
 
 ### Container & Content Widths
 
@@ -454,6 +455,7 @@ The grid utilities are CSS-variable driven for flexible column counts and consis
 <div class="widget-grid widget-grid-3">  <!-- 3 columns -->
 <div class="widget-grid widget-grid-4">  <!-- 4 columns -->
 <div class="widget-grid widget-grid-5">  <!-- 5 columns -->
+<!-- ...up to widget-grid-8 -->
 ```
 
 Or set the desktop column count directly:
@@ -510,21 +512,21 @@ Arch widgets support four color schemes defined in theme settings:
 
 ```liquid
 <!-- Default light scheme -->
-<section class="widget color-scheme-standard">
+<section class="widget color-scheme-standard-primary">
   <!-- Content -->
 </section>
 
 <!-- Default dark/emphasis scheme -->
-<section class="widget color-scheme-highlight">
+<section class="widget color-scheme-highlight-primary">
   <!-- Content -->
 </section>
 
-<!-- Accent variants swap the background pair -->
-<section class="widget color-scheme-standard-accent">
+<!-- Secondary variants swap the background pair -->
+<section class="widget color-scheme-standard-secondary">
   <!-- Content -->
 </section>
 
-<section class="widget color-scheme-highlight-accent">
+<section class="widget color-scheme-highlight-secondary">
   <!-- Content -->
 </section>
 ```
@@ -538,12 +540,12 @@ Add a color scheme setting to your widget schema:
   "type": "select",
   "id": "color_scheme",
   "label": "tTheme:my_widget.settings.color_scheme.label",
-  "default": "standard",
+  "default": "standard-primary",
   "options": [
-    { "value": "standard", "label": "tTheme:my_widget.settings.color_scheme.options.standard" },
-    { "value": "standard-accent", "label": "tTheme:my_widget.settings.color_scheme.options.standard_accent" },
-    { "value": "highlight", "label": "tTheme:my_widget.settings.color_scheme.options.highlight" },
-    { "value": "highlight-accent", "label": "tTheme:my_widget.settings.color_scheme.options.highlight_accent" }
+    { "value": "standard-primary", "label": "tTheme:my_widget.settings.color_scheme.options.standard_primary" },
+    { "value": "standard-secondary", "label": "tTheme:my_widget.settings.color_scheme.options.standard_secondary" },
+    { "value": "highlight-primary", "label": "tTheme:my_widget.settings.color_scheme.options.highlight_primary" },
+    { "value": "highlight-secondary", "label": "tTheme:my_widget.settings.color_scheme.options.highlight_secondary" }
   ]
 }
 ```
@@ -553,11 +555,11 @@ Add a color scheme setting to your widget schema:
 ```liquid
 <section
   class="widget widget-{name} widget-{{ widget.id }} color-scheme-{{ widget.settings.color_scheme }}"
-  {% unless widget.settings.color_scheme == 'standard' %}
+  {% unless widget.settings.color_scheme == 'standard-primary' %}
     style="--widget-bg-color: var(--bg-primary);"
   {% endunless %}
 >
-  <div class="widget-container {% unless widget.settings.color_scheme == 'standard' %}widget-container-padded{% endunless %}">
+  <div class="widget-container {% unless widget.settings.color_scheme == 'standard-primary' %}widget-container-padded{% endunless %}">
     <!-- Content -->
   </div>
 </section>
@@ -566,7 +568,7 @@ Add a color scheme setting to your widget schema:
 **How it works:**
 
 1. `color-scheme-{{ widget.settings.color_scheme }}` adds the appropriate class
-2. Non-`standard` schemes automatically set the widget background via inline style
+2. Non-`standard-primary` schemes automatically set the widget background via inline style
 3. `widget-container-padded` adds padding for widgets with a filled background
 4. All text, borders, and accent colors automatically switch based on scheme
 
@@ -1100,6 +1102,7 @@ For small one-off themes, direct strings are also supported at runtime, so value
 - `{widget_type}.settings.{setting_id}.options.{value}` -- select/radio option label
 - `{widget_type}.blocks.{block_type}.name` -- block `displayName`
 - `{widget_type}.blocks.{block_type}.settings.{setting_id}.label` -- block setting label
+- `global.widgets.settings.{id}.label` / `global.widgets.blocks.{block_type}...` -- shared keys for settings/blocks that are identical across widgets (section headers, color scheme, standardized heading/text/button blocks)
 
 ### Transparent Header Support
 
@@ -1261,7 +1264,7 @@ Blocks should also use headers to organize their settings:
       "type": "select",
       "id": "color_scheme",
       "label": "tTheme:my_widget.settings.color_scheme.label",
-      "default": "light"
+      "default": "standard-primary"
     }
   ]
 }
@@ -1283,18 +1286,7 @@ Use `header` setting types to organize block settings:
 
 ### Background Setting Pattern
 
-```json
-{
-  "type": "select",
-  "id": "background",
-  "label": "tTheme:my_widget.settings.background.label",
-  "default": "primary",
-  "options": [
-    { "value": "primary", "label": "tTheme:my_widget.settings.background.options.primary" },
-    { "value": "secondary", "label": "tTheme:my_widget.settings.background.options.secondary" }
-  ]
-}
-```
+Widget-level surface/background selection is handled by the `color_scheme` select setting (see [Color System](#color-system)) — there is no separate `background` select on Arch widgets. Place `color_scheme` at the end of the Display section.
 
 ### Block Background Settings Pattern
 
@@ -1354,35 +1346,49 @@ Use `header` setting types to organize block settings:
 
 ## Standardized Block Types
 
-To ensure consistency across widgets, use these standardized block definitions:
+To ensure consistency across widgets, use these standardized block definitions. In the Arch theme, shared block types (heading, text, button, icon, features) use a **shared locale namespace** — `tTheme:global.widgets.blocks.{block_type}.*` for block settings and `tTheme:global.widgets.settings.{header_id}.label` for the shared Content/Display headers — so every widget shows identical labels for the same block.
 
 ### Heading Block
 
-**Standard sizes**: Large, XL, 2XL, 3XL, 4XL, 5XL
+**Standard sizes**: Large, XL, then 2XL through 9XL (heading scale)
 
 ```json
 {
   "type": "heading",
-  "displayName": "tTheme:my_widget.blocks.heading.name",
+  "displayName": "tTheme:global.widgets.blocks.heading.name",
   "settings": [
+    {
+      "type": "header",
+      "id": "content_header",
+      "label": "tTheme:global.widgets.settings.content_header.label"
+    },
     {
       "type": "text",
       "id": "text",
-      "label": "tTheme:my_widget.blocks.heading.settings.text.label",
+      "label": "tTheme:global.widgets.blocks.heading.settings.text.label",
       "default": "Section Heading"
+    },
+    {
+      "type": "header",
+      "id": "display_header",
+      "label": "tTheme:global.widgets.settings.display_header.label"
     },
     {
       "type": "select",
       "id": "size",
-      "label": "tTheme:my_widget.blocks.heading.settings.size.label",
+      "label": "tTheme:global.widgets.blocks.heading.settings.size.label",
       "default": "2xl",
       "options": [
-        { "value": "lg", "label": "tTheme:my_widget.blocks.heading.settings.size.options.lg" },
-        { "value": "xl", "label": "tTheme:my_widget.blocks.heading.settings.size.options.xl" },
-        { "value": "2xl", "label": "tTheme:my_widget.blocks.heading.settings.size.options.2xl" },
-        { "value": "3xl", "label": "tTheme:my_widget.blocks.heading.settings.size.options.3xl" },
-        { "value": "4xl", "label": "tTheme:my_widget.blocks.heading.settings.size.options.4xl" },
-        { "value": "5xl", "label": "tTheme:my_widget.blocks.heading.settings.size.options.5xl" }
+        { "value": "lg", "label": "tTheme:global.widgets.blocks.heading.settings.size.options.lg" },
+        { "value": "xl", "label": "tTheme:global.widgets.blocks.heading.settings.size.options.xl" },
+        { "value": "2xl", "label": "tTheme:global.widgets.blocks.heading.settings.size.options.2xl" },
+        { "value": "3xl", "label": "tTheme:global.widgets.blocks.heading.settings.size.options.3xl" },
+        { "value": "4xl", "label": "tTheme:global.widgets.blocks.heading.settings.size.options.4xl" },
+        { "value": "5xl", "label": "tTheme:global.widgets.blocks.heading.settings.size.options.5xl" },
+        { "value": "6xl", "label": "tTheme:global.widgets.blocks.heading.settings.size.options.6xl" },
+        { "value": "7xl", "label": "tTheme:global.widgets.blocks.heading.settings.size.options.7xl" },
+        { "value": "8xl", "label": "tTheme:global.widgets.blocks.heading.settings.size.options.8xl" },
+        { "value": "9xl", "label": "tTheme:global.widgets.blocks.heading.settings.size.options.9xl" }
       ]
     }
   ]
@@ -1406,38 +1412,50 @@ To ensure consistency across widgets, use these standardized block definitions:
 
 **Standard sizes**: Small, Base, Large **Standard options**: Uppercase, Muted color
 
+The text field is a `richtext` setting (HTML output, rendered with `| raw`):
+
 ```json
 {
   "type": "text",
-  "displayName": "tTheme:my_widget.blocks.text.name",
+  "displayName": "tTheme:global.widgets.blocks.text.name",
   "settings": [
     {
-      "type": "textarea",
+      "type": "header",
+      "id": "content_header",
+      "label": "tTheme:global.widgets.settings.content_header.label"
+    },
+    {
+      "type": "richtext",
       "id": "text",
-      "label": "tTheme:my_widget.blocks.text.settings.text.label",
-      "default": "Add your text content here."
+      "label": "tTheme:global.widgets.blocks.text.settings.text.label",
+      "default": "<p>Add your text content here.</p>"
+    },
+    {
+      "type": "header",
+      "id": "display_header",
+      "label": "tTheme:global.widgets.settings.display_header.label"
     },
     {
       "type": "select",
       "id": "size",
-      "label": "tTheme:my_widget.blocks.text.settings.size.label",
+      "label": "tTheme:global.widgets.blocks.text.settings.size.label",
       "default": "base",
       "options": [
-        { "value": "sm", "label": "tTheme:my_widget.blocks.text.settings.size.options.sm" },
-        { "value": "base", "label": "tTheme:my_widget.blocks.text.settings.size.options.base" },
-        { "value": "lg", "label": "tTheme:my_widget.blocks.text.settings.size.options.lg" }
+        { "value": "sm", "label": "tTheme:global.widgets.blocks.text.settings.size.options.sm" },
+        { "value": "base", "label": "tTheme:global.widgets.blocks.text.settings.size.options.base" },
+        { "value": "lg", "label": "tTheme:global.widgets.blocks.text.settings.size.options.lg" }
       ]
     },
     {
       "type": "checkbox",
       "id": "uppercase",
-      "label": "tTheme:my_widget.blocks.text.settings.uppercase.label",
+      "label": "tTheme:global.widgets.blocks.text.settings.uppercase.label",
       "default": false
     },
     {
       "type": "checkbox",
       "id": "muted",
-      "label": "tTheme:my_widget.blocks.text.settings.muted.label",
+      "label": "tTheme:global.widgets.blocks.text.settings.muted.label",
       "default": false
     }
   ]
@@ -1465,53 +1483,63 @@ To ensure consistency across widgets, use these standardized block definitions:
 ```json
 {
   "type": "button",
-  "displayName": "tTheme:my_widget.blocks.button.name",
+  "displayName": "tTheme:global.widgets.blocks.button.name",
   "settings": [
+    {
+      "type": "header",
+      "id": "content_header",
+      "label": "tTheme:global.widgets.settings.content_header.label"
+    },
     {
       "type": "link",
       "id": "link",
-      "label": "tTheme:my_widget.blocks.button.settings.link.label",
+      "label": "tTheme:global.widgets.blocks.button.settings.link.label",
       "default": {
-        "text": "Learn More",
+        "text": "Get Started",
         "href": "#",
         "target": "_self"
       }
     },
     {
-      "type": "select",
-      "id": "style",
-      "label": "tTheme:my_widget.blocks.button.settings.style.label",
-      "default": "secondary",
-      "options": [
-        { "value": "primary", "label": "tTheme:my_widget.blocks.button.settings.style.options.primary" },
-        { "value": "secondary", "label": "tTheme:my_widget.blocks.button.settings.style.options.secondary" }
-      ]
-    },
-    {
       "type": "link",
       "id": "link_2",
-      "label": "tTheme:my_widget.blocks.button.settings.link_2.label"
+      "label": "tTheme:global.widgets.blocks.button.settings.link_2.label"
+    },
+    {
+      "type": "header",
+      "id": "display_header",
+      "label": "tTheme:global.widgets.settings.display_header.label"
+    },
+    {
+      "type": "select",
+      "id": "style",
+      "label": "tTheme:global.widgets.blocks.button.settings.style.label",
+      "default": "primary",
+      "options": [
+        { "value": "primary", "label": "tTheme:global.widgets.blocks.button.settings.style.options.primary" },
+        { "value": "secondary", "label": "tTheme:global.widgets.blocks.button.settings.style.options.secondary" }
+      ]
     },
     {
       "type": "select",
       "id": "style_2",
-      "label": "tTheme:my_widget.blocks.button.settings.style_2.label",
+      "label": "tTheme:global.widgets.blocks.button.settings.style_2.label",
       "default": "secondary",
       "options": [
-        { "value": "primary", "label": "tTheme:my_widget.blocks.button.settings.style_2.options.primary" },
-        { "value": "secondary", "label": "tTheme:my_widget.blocks.button.settings.style_2.options.secondary" }
+        { "value": "primary", "label": "tTheme:global.widgets.blocks.button.settings.style_2.options.primary" },
+        { "value": "secondary", "label": "tTheme:global.widgets.blocks.button.settings.style_2.options.secondary" }
       ]
     },
     {
       "type": "select",
       "id": "size",
-      "label": "tTheme:my_widget.blocks.button.settings.size.label",
+      "label": "tTheme:global.widgets.blocks.button.settings.size.label",
       "default": "medium",
       "options": [
-        { "value": "small", "label": "tTheme:my_widget.blocks.button.settings.size.options.small" },
-        { "value": "medium", "label": "tTheme:my_widget.blocks.button.settings.size.options.medium" },
-        { "value": "large", "label": "tTheme:my_widget.blocks.button.settings.size.options.large" },
-        { "value": "xlarge", "label": "tTheme:my_widget.blocks.button.settings.size.options.xlarge" }
+        { "value": "small", "label": "tTheme:global.widgets.blocks.button.settings.size.options.small" },
+        { "value": "medium", "label": "tTheme:global.widgets.blocks.button.settings.size.options.medium" },
+        { "value": "large", "label": "tTheme:global.widgets.blocks.button.settings.size.options.large" },
+        { "value": "xlarge", "label": "tTheme:global.widgets.blocks.button.settings.size.options.xlarge" }
       ]
     }
   ]
@@ -1766,7 +1794,7 @@ Many card-based widgets support switching between grid and carousel layout via a
 {% endif %}
 ```
 
-No per-widget JavaScript is needed — `carousel.js` (loaded globally via `layout.liquid`) auto-initializes all `.carousel-container` elements. Widgets supporting this pattern: card-grid, icon-card-grid, profile-grid, testimonials, gallery, pricing, icon-list, key-figures, logo-cloud, numbered-cards, project-showcase.
+No per-widget JavaScript is needed — the shared `carousel.js` (a theme-level asset, conditionally enqueued by each carousel-capable widget via `{% enqueue_script src: "carousel.js", defer: true, location: "footer", priority: 40, theme: true %}` and deduplicated automatically) auto-initializes all `.carousel-container` elements. Widgets supporting this pattern: card-grid, icon-card-grid, profile-grid, testimonials, gallery, pricing, icon-list, key-figures, logo-cloud, numbered-cards, project-showcase.
 
 ### Social Icons Snippet
 
@@ -1780,7 +1808,7 @@ The `social-icons.liquid` snippet renders social media link icons from theme-lev
 
 Each link renders as an `<a class="social-link">` with the platform icon via `{% render 'icon', icon: 'platform-name' %}`. Links with blank URLs are automatically hidden.
 
-Some widgets (accordion, contact-form) include a `social` block type that renders these icons inline. The `social-icons` widget provides a standalone section for displaying social links with an eyebrow, heading, description, and configurable icon size.
+Some widgets (accordion, map, schedule-table) include a `social` block type that renders these icons inline. The `social-icons` widget provides a standalone section for displaying social links with an eyebrow, heading, description, and configurable icon size.
 
 ---
 
@@ -1839,7 +1867,10 @@ Before submitting a widget:
 | `--font-size-3xl`  | 2.8rem | 28px   | H2             |
 | `--font-size-4xl`  | 3.2rem | 32px   | H1 (mobile)    |
 | `--font-size-5xl`  | 3.6rem | 36px   | H1 (tablet)    |
-| `--font-size-6xl`  | 4rem   | 40px   | H1 (desktop)   |
+| `--font-size-6xl`  | 4.4rem | 44px   | H1 (desktop)   |
+| `--font-size-7xl`  | 5.4rem | 54px   | Display headings |
+| `--font-size-8xl`  | 6.8rem | 68px   | Display headings |
+| `--font-size-9xl`  | 8.4rem | 84px   | Display headings |
 
 ---
 

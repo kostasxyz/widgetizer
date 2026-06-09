@@ -337,7 +337,12 @@ A specialized input with two dropdowns for selecting a font family and its corre
 
 ### Icon
 
-An icon picker that allows users to select from a library of available icons. The value is the icon name/identifier.
+An icon picker that allows users to select from a library of available icons (loaded from the project's `assets/icons.json`, which supports both flat and grouped formats). The value is the icon name/identifier.
+
+**Additional Properties:**
+
+- **`options`** (string[], optional): Restricts the picker to an explicit subset of icon names.
+- **`allow_patterns`** (string[], optional): Restricts the picker to icons whose names match the given wildcard patterns (e.g., `"arrow-*"`).
 
 ```json
 {
@@ -362,7 +367,8 @@ An image uploader that includes a preview, the ability to replace the image, and
 
 **Additional Properties:**
 
-- **`compact`** (boolean, optional): If `true`, renders a compact square preview with Upload/Browse buttons stacked beside it. Useful for small image settings like favicons. Defaults to `false`.
+- **`size`** (string, optional): `"full"` (default) or `"narrow"`. `"narrow"` caps the input width (compact preview) — useful for small image settings like favicons.
+- **`compact`** (boolean, optional): Legacy equivalent of `size: "narrow"`. When both are present, `size` wins. Defaults to `false`.
 
 **Features:**
 
@@ -385,14 +391,14 @@ An image uploader that includes a preview, the ability to replace the image, and
 }
 ```
 
-**Compact Example:**
+**Narrow Example:**
 
 ```json
 {
   "id": "favicon",
   "type": "image",
   "label": "tTheme:global.branding.settings.favicon.label",
-  "compact": true,
+  "size": "narrow",
   "description": "tTheme:global.branding.settings.favicon.description"
 }
 ```

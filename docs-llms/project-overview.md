@@ -40,6 +40,10 @@ Building pages in Widgetizer is as easy as arranging building blocks.
 - **What is a Widget?** Widgets are the main building blocks of your page. Examples include a **Hero Banner**, a **Text Section**, a **Contact Form**, or a **Gallery**. Each widget is self-contained and comes with its own set of customization options (like background colors, alignment, and spacing).
 - **What is a Block?** Blocks are smaller, flexible units _inside_ certain widgets. For example, if you have a "Features" widget, each individual feature is a **block**. This allows you to add as many features as you need, reorder them, or remove them without affecting the overall layout of the widget.
 
+### Collections
+
+Themes can define **Collections** — structured content types like a Portfolio, Team, or Services list. You author collection items through a simple CMS-style form (with search, reordering, and bulk actions), and the theme renders each item as its own page using a template the theme provides.
+
 ### Media Library
 
 The **Media Library** is your central hub for managing images.

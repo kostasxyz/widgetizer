@@ -15,7 +15,7 @@ The system has three layers:
 
 Collections are **per-project content** like pages and menus. Schemas are **theme-owned** (replaced on theme update); item data is **protected user content** (never touched by updates).
 
-The shipped Arch theme includes two example collection types: `portfolio` (`hasItemPages: true`) and `team` (`hasItemPages: false`).
+The shipped Arch theme includes two example collection types: `portfolio` (`hasItemPages: true`) and `team` (`hasItemPages: false`). The Aegean theme ships two more — `accommodation` and `excursion`, both `hasItemPages: true` **with** a `template.liquid` — and is the working reference for item pages.
 
 ---
 
@@ -231,7 +231,7 @@ Slug helpers come from `server/utils/slugHelpers.js`; the service does not dupli
 
 ### Controller & routes
 
-`server/controllers/collectionController.js` exposes ten handlers; `server/routes/collections.js` mounts them at `/api/collections` in `server/createApp.js`. Routes use `express-validator` + `resolveActiveProject` (no `:projectId` segment — collections are site-workspace content, and `apiFetch` injects `X-Project-Id`).
+`server/controllers/collectionController.js` exposes eleven handlers; `server/routes/collections.js` mounts them at `/api/collections` in `server/createApp.js`. Routes use `express-validator` + `resolveActiveProject` (no `:projectId` segment — collections are site-workspace content, and `apiFetch` injects `X-Project-Id`).
 
 | Method & path | Handler |
 | --- | --- |
@@ -244,6 +244,7 @@ Slug helpers come from `server/utils/slugHelpers.js`; the service does not dupli
 | `DELETE /:collectionType/:itemSlug` | `deleteItem` |
 | `POST /:collectionType/bulk-delete` | `bulkDeleteItems` (200, or 207 with `{ deleted, notFound, errors }`) |
 | `POST /:collectionType/:itemSlug/duplicate` | `duplicateItem` (201) |
+| `POST /:collectionType/:itemSlug/discard-archived` | `discardArchivedItem` (the confirmed "Leftover content" removal, §4) |
 | `POST /:collectionType/reorder` | `reorderItems` |
 
 All write responses set `Cache-Control: no-store`. The controllers wire media-usage sync (§ [Media](core-media.md)) on every create/update/delete/duplicate.
@@ -254,7 +255,7 @@ All write responses set `Cache-Control: no-store`. The controllers wire media-us
 
 Two distinct concerns keep item links correct:
 
-- **Render-time resolution** (`resolveCollectionItemLinks(item, pagesByUuid, outputPathPrefix, collectionItemsByUuid)`): walks an item's `settings`, resolving any link object's `pageUuid` → current page slug **or `collectionItemUuid` → the target item's current `{slugPrefix}/{slug}.html`** (collection item pages are first-class `link` targets, parity with menus — finding #11), prefixing internal hrefs for depth (publish mode) and clearing dead refs to `{ href: "", text: "", target: "_self" }`. The identical `collectionItemUuid` branch lives in the **widget** link resolver (`resolveLinkValue` / `resolveWidgetPageLinks` in `renderingService.js`), which loads the item map whenever a widget has `menu` **or** `link` settings (`schemaHasLinkSetting`). Applied by the `| collection` filter loader (§7-Liquid) and the per-item export loop (§8). API GET endpoints return **raw** items (un-resolved refs) so the editor's link picker can show the page/item name. The shared `link`-setting picker (`LinkInput` via `useLinkTargets`) lists pages and `hasItemPages` collection items grouped in the shared `<Combobox>`, storing `collectionType` + `collectionItemUuid` exactly as the menu editor does.
+- **Render-time resolution** (`resolveCollectionItemLinks(item, pagesByUuid, outputPathPrefix, collectionItemsByUuid)`): walks an item's `settings`, resolving any link object's `pageUuid` → current page slug **or `collectionItemUuid` → the target item's current `{slugPrefix}/{slug}.html`** (collection item pages are first-class `link` targets, parity with menus — finding #11), prefixing internal hrefs for depth (publish mode) and clearing dead refs to `{ href: "", text: "", target: "_self" }`. The identical `collectionItemUuid` branch lives in the **widget** link resolver (`resolveLinkValue` / `resolveWidgetPageLinks` in `renderingService.js`), which loads the item map whenever a widget has `menu` **or** `link` settings (`schemaHasLinkSetting`). Applied by the `| collection` filter loader (§7-Liquid) and the per-item export loop (§8). API GET endpoints return **raw** items (un-resolved refs) so the editor's link picker can show the page/item name. The shared `link`-setting picker (`LinkInput` via `useLinkTargets`) lists pages and `hasItemPages` collection items grouped in the shared `<Combobox>` — sorted alphabetically (case-insensitive: pages A–Z, collection groups A–Z by display name, items A–Z within each group, independent of the collection's `defaultSort`) — storing `collectionType` + `collectionItemUuid` exactly as the menu editor does.
 - **Storage cleanup** (`server/utils/linkEnrichment.js`): `cleanupDeletedPageReferences`, `enrichNewProjectReferences`, and `remapDuplicatedProjectUuids` walk `collections/*/*.json` (plus widget/global page JSON) so dead `pageUuid` refs are stripped on page delete, seeded preset items are wired up, and duplicated projects get fresh item `uuid`s plus remapped references. The collection-item stable ref (`collectionItemUuid`) gets the same treatment across menus **and** `link` settings: `cleanupDeletedCollectionItemReferences` clears it on item delete, `remapDuplicatedProjectUuids` remaps it on duplication, and `remapCollectionItemLinkRefs` (+ `remapCollectionItemMenuRefs`) repoint preset refs at freshly seeded items (#11). Touched items are rewritten atomically and re-synced into media usage.
 
 ### Depth-aware prefixing (`server/utils/linkPrefixer.js`)
@@ -310,14 +311,14 @@ Widgets read collection data via a Liquid filter — the most common use case (a
 {% assign recent = 'portfolio' | collection: limit: 6, sort: 'created_desc' %}
 ```
 
-Item shape: `{ id, uuid, slug, url, created, updated, settings }`. `url` is computed by the loader (not stored): `null` when `hasItemPages: false`; the depth-prefixed relative path in publish mode; the preview API route in preview mode.
+Item shape: `{ id, uuid, slug, url, created, updated, settings }`. `url` is computed by the loader (not stored): `null` when `hasItemPages: false`; otherwise `{outputPathPrefix}{slugPrefix}/{slug}.html` — depth-prefixed in publish mode, the plain relative path in preview mode (where the standalone site preview intercepts clicks on nested item links and routes them to its own item-preview route, §9).
 
 Implementation:
 
-- `src/core/filters/collectionFilter.js` exports `registerCollectionFilter(engine)` (and `normalizeCollectionFilterArgs`), registered in `configureLiquidEngine()`. It lives under `src/core/`, so it imports **no** backend module — it reads `projectId`, `renderMode`, `outputPathPrefix`, and a `getCollectionItems` loader off `this.context.globals`.
+- `src/core/filters/collectionFilter.js` exports `registerCollectionFilter(engine)` (and `normalizeCollectionFilterArgs`), registered in `configureLiquidEngine()`. It lives under `src/core/`, so it imports **no** backend module — it only reads a `getCollectionItems` loader off `this.context.globals` (the backend-attached loader is what consults `projectId`, `outputPathPrefix`, etc.) and returns `[]` when no loader is wired.
 - `createBaseRenderContext` attaches the `getCollectionItems` loader once per render. The loader calls `collectionService.listCollectionItems`, applies `prepareCollectionItemForRender` per item (resolves `pageUuid` links, resolves any schema-declared `menu` settings to full menu objects when the collection declares one — lazily loading `menuDeps`, #10 — **and** sanitizes richtext/link settings — sanitize-after-resolve), computes `item.url`, and caches results per `(type, options)` in a per-render `globals.collectionCache` Map. The cache is **per-render** (not global) because `outputPathPrefix` differs between root pages and item pages.
 - Supported options: `limit`, `sort`, `offset`.
-- **`invalid: true` items are excluded by default** (matching export's refusal to publish them); developer mode logs the skipped type/slug values. There is no `includeInvalid` option in v1.
+- **`invalid: true` items are excluded by default** (matching export's refusal to publish them); non-production runs (`NODE_ENV !== "production"`) log the skipped type/slug values. `limit`/`offset` are applied **after** the invalid filter, so an invalid item never consumes a slot in the returned window. There is no `includeInvalid` option in v1.
 
 The filter intentionally bypasses the per-widget settings sandbox — collection data is global, read-only project data, scoped to the active project; any widget may read any collection.
 
@@ -327,7 +328,7 @@ The filter intentionally bypasses the per-widget settings sandbox — collection
 
 Opt-in via `hasItemPages: true`. The theme must ship `template.liquid` for that type; collections that only render inside widgets (e.g. Arch's `team`) leave `hasItemPages: false` and need no template.
 
-> **Theme content note:** Arch's `portfolio` schema sets `hasItemPages: true` but does not yet ship a `template.liquid`. Until a theme adds one, exporting a project with `portfolio` items fails fast with a clear "no template.liquid" error (see below). The export *code path* is complete; the theme template is the remaining authoring step.
+> **Theme content note:** Arch's `portfolio` schema sets `hasItemPages: true` but does not yet ship a `template.liquid`; exporting a project with `portfolio` items fails fast with a clear "no template.liquid" error (see below). The export *code path* is complete — the Aegean theme's `accommodation` and `excursion` types ship `template.liquid` and exercise it end to end; the Arch template is the remaining authoring step.
 
 The template renders **inside** the theme's main layout (header/footer/main slots), exactly like page templates. Available context: `item` (`id`, `uuid`, `slug`, `url`, `created`, `updated`, `settings.*`), `collection` (the schema), `page` (the page-shaped object below), plus the usual `project`/`theme`/`mediaFiles`/`imagePath`/`filePath`/`site_icons`. It is rendered through `renderLiquidTemplate(projectId, templateString, context, sharedGlobals)` — a helper exported from `renderingService.js` that runs an ad-hoc template string through the cached per-project engine. Both item-page render paths — the export loop and the in-app preview — build the finished page through **one** shared `renderCollectionItemPage()` in `renderingService.js` (resolve item → header/footer → page-shaped data → template → layout), so the two can never drift (the page-render analogue of how every widget goes through `renderWidget`); each caller supplies only its mode-specific `sharedGlobals` and post-processing (export: format/storage-rewrite/markdown/write; preview: token injection). Schema-declared `menu` settings resolve to a full menu object (`items[]` with depth-aware `link` + `canonicalPath`), the same shape widgets receive (finding #10), so an item template can `{% render 'menu', menu: item.settings.<id> %}`.
 
@@ -349,9 +350,10 @@ The full export wiring (two-pass validation, subdirectory creation, per-item `sh
 | `src/pages/CollectionItems.jsx` | Listing table (search, multi-select bulk delete, row actions, drag-reorder when `sortable`, "Needs attention" filter for invalid items) |
 | `src/pages/CollectionItemAdd.jsx` / `CollectionItemEdit.jsx` | Add/edit routes; edit re-routes with `navigate(newPath, { replace: true })` on slug change |
 | `src/components/collections/CollectionItemForm.jsx` | Shared schema-driven form: `react-hook-form`, renders fields via `SettingsRenderer`, `useGuardedFormPage(isDirty)`, slug auto-generated from the `usedAsTitle` field, inline required-field validation, invalid items load with `validationErrors` pre-populated; the `usedAsTitle` field renders with an inline icon-only **Preview** (eye) button when the type has item pages; a collapsible **SEO** section (shared `SeoFields`, parity with `PageForm`) shows for `hasItemPages` types (Finding #12); a **"Leftover content"** notice with a confirmed discard surfaces any archived fields (Finding #8) |
-| `src/components/collections/CollectionItemPreview.jsx` | Full-screen, page-editor-style item preview overlay (back button, item dropdown, desktop/mobile toggle); renders the selected item — including the live unsaved draft — through the theme template in an iframe |
+| `src/components/collections/CollectionItemPreview.jsx` | Full-screen, page-editor-style item preview overlay (back button, item dropdown + refresh, desktop/mobile toggle); renders the selected item — including the live unsaved draft — through the theme template in an iframe. Built from the shared preview chrome (`src/components/preview/PreviewModeToggle.jsx` + `PreviewStage.jsx`) the page editor and site preview also use |
+| `src/pages/CollectionItemPagePreview.jsx` | Thin child route of `SitePreviewLayout` (`/preview/collection/:prefix/:slug`): resolves a nested item URL's `slugPrefix` to a `hasItemPages` collection, loads the saved item, and requests a render token via the same `POST /api/preview/collection` flow — so clicking an item link while browsing the standalone site preview navigates into the item page |
 
-Routes are registered in `src/App.jsx` (`collections/:collectionType`, `.../add`, `.../:itemSlug/edit`). The sidebar (`src/components/layout/Sidebar.jsx`) calls `useCollections()` and renders one nav entry per type after Pages/Menus, with a Lucide icon resolved from the schema `icon` string (fallback `Database`); the label adapter accepts a pre-resolved `label` alongside the existing `labelKey`.
+Routes are registered in `src/App.jsx` (`collections/:type`, `.../add`, `.../:slug/edit`, plus the site-preview route `/preview/collection/:prefix/:slug`). The sidebar (`src/components/layout/Sidebar.jsx`) calls `useCollections()` and renders one nav entry per type after Pages/Menus, with a Lucide icon resolved from the schema `icon` string (fallback `Database`); the label adapter accepts a pre-resolved `label` alongside the existing `labelKey`.
 
 There is no autosave or undo/redo for collection items in v1 — explicit save plus the navigation guard is sufficient. These are deliberate omissions, not gaps.
 
@@ -359,8 +361,8 @@ There is no autosave or undo/redo for collection items in v1 — explicit save p
 
 Item pages can be previewed without exporting, through the same token flow as page/standalone previews:
 
-- **Entry points** — the edit form's always-visible eye button (previews the current unsaved draft first), and a **Preview** action in each listing row's `…` menu (gated on `hasItemPages`).
-- **Endpoint** — `POST /api/preview/collection` (`createCollectionPreviewToken` in `previewController.js`) renders a draft item (`{ collectionType, slug, settings }`) against the active project's theme: it loads the schema + `template.liquid`, assembles a draft item, renders header/footer/template through `renderPageLayout` in `"preview"` mode, injects the base tag + standalone runtime + a link-click guard, and returns `{ token }`. The client points an iframe at `/render/:token`. Guards: `400` when `collectionType` is missing, and `400` "Preview unavailable" when the collection has no `template.liquid` (or the type is unknown). The dropdown lists saved items so authors can flip between them; selecting one re-renders via the same endpoint.
+- **Entry points** — the edit form's always-visible eye button (previews the current unsaved draft first), a **Preview** action in each listing row's `…` menu (gated on `hasItemPages`), and the standalone site preview, where clicking a nested item link (`{slugPrefix}/{slug}.html`) routes to `/preview/collection/:prefix/:slug` (`CollectionItemPagePreview`).
+- **Endpoint** — `POST /api/preview/collection` (`createCollectionPreviewToken` in `previewController.js`) renders a draft item (`{ collectionType, slug, settings }`) against the active project's theme: it loads the schema + `template.liquid`, assembles a draft item, renders it through the shared `renderCollectionItemPage()` pipeline (§8) in `"preview"` mode, injects the base tag + standalone runtime + a link-click guard, and returns `{ token }`. The client points an iframe at `/render/:token`. Guards: `400` when `collectionType` is missing, and `400` "Preview unavailable" when the collection has no `template.liquid` (or the type is unknown). The dropdown lists saved items so authors can flip between them; selecting one re-renders via the same endpoint.
 
 ---
 
@@ -393,7 +395,7 @@ Deferred, with the v1 data model already forward-compatible:
 
 ## Tests
 
-Backend coverage lives in `server/tests/`: `collections.test.js`, `collectionApi.test.js`, `collectionItems.test.js`, `collectionFilter.test.js`, `collectionItemExport.test.js`, `collectionItemPageData.test.js`, `collectionLinkEnrichment.test.js`, `collectionMediaUsage.test.js`, `collectionPresetSeeding.test.js`, `menuResolver.test.js` — covering schema validation, CRUD + slug/UUID invariants, atomic-write crash recovery, the Liquid filter, depth-aware export, the page-shaped object, link enrichment, media usage, and preset seeding. Item-preview guard paths (missing `collectionType`, template-less collection) are covered in `preview.test.js`.
+Backend coverage lives in `server/tests/`: `collections.test.js`, `collectionApi.test.js`, `collectionItems.test.js`, `collectionFilter.test.js`, `collectionItemExport.test.js`, `collectionItemPageData.test.js`, `collectionLinkEnrichment.test.js`, `collectionMediaUsage.test.js`, `collectionPresetSeeding.test.js`, `renderCollectionItemPage.test.js`, `menuResolver.test.js` — covering schema validation, CRUD + slug/UUID invariants, atomic-write crash recovery, the Liquid filter, depth-aware export, the page-shaped object, the shared item-page render pipeline, link enrichment, media usage, and preset seeding. Item-preview guard paths (missing `collectionType`, template-less collection) are covered in `preview.test.js`.
 
 ---
 

@@ -139,7 +139,7 @@ The media library automatically tracks which pages and global widgets are using 
 - **Delete Protection**: Files with a non-empty `usedIn` array cannot be deleted
 - **Manual Refresh**: Users can manually refresh usage tracking to recalculate all relationships
 - **Media Types Tracked**: Images and file assets (PDFs) are tracked across pages, global widgets, theme settings, and **collection items**
-- **Recursive Scanning**: The usage scanner recurses into nested objects (e.g. link settings with `{ href: "/uploads/files/brochure.pdf", ... }`) so media paths inside link fields are tracked for deletion protection and export
+- **Recursive Scanning**: The usage scanner recurses into nested objects (e.g. link settings with `{ href: "/uploads/files/brochure.pdf", ... }`) and arrays (e.g. `gallery` settings, whose value is an ordered array of image upload paths) so media paths inside link fields and gallery entries are tracked for deletion protection and export
 
 #### Collection item usage
 
@@ -148,7 +148,7 @@ Collection items reference media through `image`, `file`, and `link` settings ju
 - `mediaUsageService.js` adds `extractMediaPathsFromCollectionItem`, `updateCollectionItemMediaUsage`, `removeCollectionItemFromMediaUsage`, and `syncCollectionItemMediaUsageOnWrite` (the last handles renames: remove the old source, add the new).
 - `refreshAllMediaUsage` also scans `data/projects/{folder}/collections/*/*.json` (excluding `_order.json`), so the existing structural-refresh hooks (project creation/duplication/import, theme-update apply) pick up collection media with **no** new refresh call sites.
 - The collection controller's CRUD handlers wire the sync calls; a mid-rename crash can leave a stale source until the next structural refresh repairs it (eventually consistent).
-- **Media library display**: source strings are resolved to friendly titles by `resolveUsageTitle` in `src/utils/mediaUsageDisplay.js` (shared by `MediaGridItem` and `MediaListItem`). `Media.jsx` lazily fetches the collection schemas + items referenced in usage rows and renders `collection:portfolio/project-alpha` as `Portfolio: Project Alpha`, falling back to the raw string when a schema/item can't be resolved (e.g. the collection was removed by a theme switch).
+- **Media library display**: source strings are resolved to friendly titles by `resolveUsageTitle` in `src/utils/mediaUsageDisplay.js` (shared by `MediaGridItem` and `MediaListItem`). `Media.jsx` loads pages plus all collection schemas and their items on mount to build a usage title map, so `collection:portfolio/project-alpha` renders as `Portfolio: Project Alpha`, falling back to the raw string when a schema/item can't be resolved (e.g. the collection was removed by a theme switch).
 
 ### Media Type Configuration
 
@@ -174,7 +174,7 @@ The Media page has been **refactored** into a clean, modular architecture with t
 
 ### Architecture Overview
 
-The `Media.jsx` component (reduced from ~410 lines to ~126 lines) now uses a **hook-based architecture** that separates concerns:
+The `Media.jsx` component uses a **hook-based architecture** that separates concerns:
 
 - **`useMediaState`**: Core state management and data loading
 - **`useMediaUpload`**: File upload logic with progress tracking
@@ -233,7 +233,7 @@ Handles metadata editing and drawer functionality:
 
 ### Core UI Components
 
-- `MediaUploader`: Drag-and-drop zone with real-time upload progress display (localized)
+- `FileUploader` (`src/components/ui/FileUploader.jsx`): Shared drag-and-drop zone with real-time upload progress display (localized)
 - `MediaToolbar`: Contains view toggle, search bar, media type filter dropdown, bulk actions, and usage refresh (localized)
 - `MediaGrid`: Responsive grid view with thumbnail cards and usage badges
 - `MediaList`: Table view with detailed file information and select-all functionality (localized)
@@ -243,7 +243,7 @@ Handles metadata editing and drawer functionality:
 
 #### `MediaSelectorDrawer` Component (`src/components/media/MediaSelectorDrawer.jsx`)
 
-A specialized drawer component that allows users to browse and select existing media files from the project library. This component is primarily used within setting input components (like `ImageInput` and `VideoInput`) to provide a "Browse" functionality.
+A specialized drawer component that allows users to browse and select existing media files from the project library. This component is primarily used within setting input components (like `ImageInput` and `FileInput`) to provide a "Browse" functionality.
 
 **Key Features:**
 
@@ -262,16 +262,18 @@ The `MediaSelectorDrawer` is integrated into:
 
 - **`ImageInput`**: Browse for existing images when setting image widget properties or theme-level image settings like favicons
 - **`FileInput`**: Browse for existing file assets (PDFs) when setting file widget properties
-- **`PageForm`**: Select featured images for pages
+- **`SeoFields`** (page and collection item forms): selects the SEO social image (`seo.og_image`) indirectly through `ImageInput`
 
 #### `ImageInput` Modes (`src/components/settings/inputs/ImageInput.jsx`)
 
-The image setting input supports two presentation modes:
+The image setting input's presentation is controlled by two props:
 
-- **Default mode**: Wide preview area with Upload and Browse actions below it. Used for most widget and theme image settings.
-- **Compact mode** (`compact: true`): Square preview with Upload and Browse stacked beside it, plus hover-only Edit and Remove controls on the preview. Intended for small assets such as the Arch theme's `favicon` setting.
+- **`size`** (`"full"` | `"narrow"`): `narrow` caps the input width (max 14rem) for small assets such as the Arch theme's `favicon` setting. In schemas, `size: "narrow"` is the current spelling; the legacy `compact: true` flag still maps to `narrow` in `SettingsRenderer`.
+- **`layout`** (`"stacked"` | `"row"`): `stacked` (default) renders a full-width preview above the controls; `row` renders a fixed 100×100 thumbnail with the controls beside it, used internally by `GalleryInput` rows.
 
-**Props Interface:**
+In all modes the empty state is a click-to-upload dropzone, a filled preview shows hover-only Edit (metadata) and Remove controls and opens the media selector when clicked, and a "Browse library" button opens `MediaSelectorDrawer`.
+
+**`MediaSelectorDrawer` Props Interface:**
 
 - `visible`: Boolean to control drawer visibility
 - `onClose`: Function called when drawer should be closed

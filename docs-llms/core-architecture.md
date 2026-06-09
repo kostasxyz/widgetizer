@@ -10,8 +10,8 @@ The app now has two main shells plus a root redirect:
 
 - `/` is handled by `src/pages/HomeRedirect.jsx`. It redirects to `/pages` when an active project exists, otherwise to `/projects`.
 - The **admin shell** uses `src/components/layout/ProjectPickerLayout.jsx` for `/projects`, `/themes`, and `/app-settings`. It can be used without an active project.
-- The **site workspace shell** uses `src/components/layout/Layout.jsx` for `/pages`, `/menus`, `/media`, `/settings`, and `/export-site`.
-- All site workspace routes are wrapped by `src/components/layout/RequireActiveProject.jsx`. If no active project exists, the user is redirected to `/projects`. When the active project changes, the same boundary resets project-scoped singleton stores and keys the workspace outlet by project ID so the route subtree remounts cleanly.
+- The **site workspace shell** uses `src/components/layout/Layout.jsx` for `/pages`, `/page-editor`, `/menus`, `/media`, `/collections/:type`, `/settings`, and `/export-site`.
+- All site workspace routes are wrapped by `src/components/layout/RequireActiveProject.jsx`. If no active project exists, the user is redirected to `/projects`. The boundary keys the workspace outlet by project ID so the route subtree remounts cleanly on project switches; project-scoped singleton store resets are coordinated higher up in `src/App.jsx` via `handleActiveProjectChange()` (`src/lib/projectSwitchCoordinator.js`) so they also run when switching projects from the admin shell.
 
 This admin-vs-site split is the main architectural consequence of the recent workspaces merge.
 
@@ -30,7 +30,8 @@ This admin-vs-site split is the main architectural consequence of the recent wor
 - `src/components/layout/AdminMenu.jsx` - Dropdown entrypoint for project/theme/app-settings navigation
 - `src/pages/HomeRedirect.jsx` - Chooses `/projects` vs `/pages` at app root
 - `src/utils/projectNavigation.js` - Resolves preserved `next` query params back into workspace destinations
-- `src/components/layout/RequireActiveProject.jsx` - Route guard plus project-switch boundary for site-workspace routes; redirects to `/projects` when no active project exists, resets project-scoped stores on active-project changes, and remounts the workspace subtree
+- `src/components/layout/RequireActiveProject.jsx` - Route guard for site-workspace routes; redirects to `/projects` when no active project exists and keys the outlet by project ID so the workspace subtree remounts on project switches
+- `src/lib/projectSwitchCoordinator.js` - `handleActiveProjectChange()` resets project-scoped singleton stores (theme, widget, save, page) when the active project changes; called from `src/App.jsx`
 
 ### Route Structure
 
@@ -39,7 +40,8 @@ This admin-vs-site split is the main architectural consequence of the recent wor
 | `/` | none | Redirects through `HomeRedirect` |
 | `/projects`, `/projects/add`, `/projects/edit/:id` | `ProjectPickerLayout` | Project administration |
 | `/themes`, `/app-settings` | `ProjectPickerLayout` | Admin utilities |
-| `/pages`, `/menus`, `/media`, `/settings`, `/export-site` | `Layout` + `RequireActiveProject` | Active-project site workspace |
+| `/pages`, `/page-editor`, `/menus`, `/media`, `/collections/:type`, `/settings`, `/export-site` | `Layout` + `RequireActiveProject` | Active-project site workspace |
+| `/preview/:pageId`, `/preview/collection/:prefix/:slug` | `SitePreviewLayout` | Standalone page / collection-item preview |
 
 ### Query Layer (`src/queries/projectManager.js`)
 
@@ -85,9 +87,9 @@ This admin-vs-site split is the main architectural consequence of the recent wor
 | --------------------------- | ------------------------------- |
 | `activeProject`             | Current active project object   |
 | `loading`                   | Loading state                   |
+| `error`                     | Error message if fetch failed   |
 | `setActiveProject(project)` | Set active project              |
 | `fetchActiveProject()`      | Fetch and update active project |
-| `clearActiveProject()`      | Clear active project            |
 
 ### Service (`server/services/projectService.js`)
 
@@ -115,15 +117,13 @@ This admin-vs-site split is the main architectural consequence of the recent wor
 | `getCoreWidget(widgetName)` | Get specific core widget schema           |
 | `getAllCoreWidgets()`       | API endpoint to retrieve all core widgets |
 
-### Server Route (`server/routes/coreWidgets.js`)
+### How Core Widgets Reach the Frontend
 
-| Method | Endpoint            | Handler               |
-| ------ | ------------------- | --------------------- |
-| GET    | `/api/core-widgets` | `getAllCoreWidgets()` |
+There is no standalone core-widgets route. `projectController.getProjectWidgets()` (GET `/api/projects/:projectId/widgets`) merges core widget schemas (via `getCoreWidgets()`) with the project's theme widget schemas. `getAllCoreWidgets()` is an Express-shaped handler but is not currently mounted on any route. `server/routes/core.js` (mounted at `/api/core`) serves static core assets only (`GET /api/core/assets/:filename`).
 
 ### Description
 
-Core widgets are reusable, theme-independent widgets stored in the core widgets directory. They can be used across all projects and themes. The controller reads schema.json files from each core widget folder and returns them to the frontend.
+Core widgets are reusable, theme-independent widgets stored in the core widgets directory (`src/core/widgets`, folders prefixed `core-`). They can be used across all projects and themes. The controller reads schema.json files from each core widget folder and returns them to the frontend.
 
 ---
 
@@ -162,17 +162,17 @@ Core widgets are reusable, theme-independent widgets stored in the core widgets 
 | `duplicatePage()`   | Clone page with `Name (Copy)` naming   |
 | `savePageContent()` | Save page content from editor      |
 
-### Internal Helpers
+### Helpers Used
 
-- `sanitizeSlug(value, fallback?)` - Normalize backend slug input with one shared rule set
-- `generateUniqueSlug(baseName, existsCheck, options)` - Generate unique slug
-- `listProjectPagesData(projectFolderName)` - List and read all page files
+- `sanitizeSlug(value, fallback?)` / `generateUniqueSlug(baseName, existsCheck, options)` - Shared slug helpers from `server/utils/slugHelpers.js`
+- `generateCopyName()` - `Name (Copy)` / `Name (Copy N)` naming from `server/utils/namingHelpers.js`
+- `listProjectPagesData(projectFolderName)` - List and read all page files (exported from `pageController.js`)
 
 ### Services Used
 
 - `server/services/mediaUsageService.js`:
-  - `updatePageMediaUsage()` - Track media usage in pages
-  - `removePageFromMediaUsage()` - Remove page from tracking
+  - `syncPageMediaUsageOnWrite()` - Track media usage when a page is saved (handles slug renames)
+  - `syncPageMediaUsageOnDelete()` - Remove page from tracking on delete
 
 ### Hooks Used
 
@@ -214,7 +214,7 @@ Core widgets are reusable, theme-independent widgets stored in the core widgets 
 
 ### Internal Helpers
 
-- `generateUniqueSlug()` - Generate unique menu ID from name
+- `generateUniqueSlug()` - Generate unique menu ID from name (shared, from `server/utils/slugHelpers.js`)
 - `generateNewMenuItemIds()` - Recursively regenerate item IDs
 
 ---
@@ -236,7 +236,7 @@ API client mirroring the controller surface; uses `apiFetch` (`X-Project-Id`). H
 
 ### Server Controller (`server/controllers/collectionController.js`)
 
-Ten handlers under `/api/collections` (`server/routes/collections.js`): `getCollectionSchemas`, `getCollectionSchema`, `getAllItems`, `getItem`, `createItem`, `updateItem`, `deleteItem`, `bulkDeleteItems`, `duplicateItem`, `reorderItems`. Validated by `express-validator` + `resolveActiveProject`.
+Eleven handlers under `/api/collections` (`server/routes/collections.js`): `getCollectionSchemas`, `getCollectionSchema`, `getAllItems`, `getItem`, `createItem`, `updateItem`, `deleteItem`, `bulkDeleteItems`, `duplicateItem`, `discardArchivedItem`, `reorderItems`. Validated by `express-validator` + `resolveActiveProject`.
 
 ### Service (`server/services/collectionService.js`)
 
@@ -275,7 +275,7 @@ Owns schema validation/migration, item CRUD with atomic + slug-safe writes, `_or
 | `deleteMultipleMedia(projectId, fileIds)`          | POST   | `/api/media/projects/:projectId/media/bulk-delete`   |
 | `getMediaFileUsage(projectId, fileId)`             | GET    | `/api/media/projects/:projectId/media/:fileId/usage` |
 | `refreshMediaUsage(projectId)`                     | POST   | `/api/media/projects/:projectId/refresh-usage`       |
-| `getMediaUrl(projectId, fileId, type)`             | -      | URL construction                                     |
+| `invalidateMediaCache(projectId)`                  | -      | Invalidate the cached media list                     |
 
 ### Media Service (`server/services/mediaService.js`)
 
@@ -301,13 +301,17 @@ Owns schema validation/migration, item CRUD with atomic + slug-safe writes, `_or
 
 | Function                              | Purpose                            |
 | ------------------------------------- | ---------------------------------- |
-| `extractMediaPathsFromPage()`         | Extract media paths from page data |
-| `extractMediaPathsFromGlobalWidget()` | Extract from global widgets        |
+| `extractMediaPathsFromPage()`         | Extract media paths from page data (internal) |
+| `extractMediaPathsFromGlobalWidget()` | Extract from global widgets (internal) |
 | `updatePageMediaUsage()`              | Update tracking for a page         |
 | `updateGlobalWidgetMediaUsage()`      | Update tracking for globals        |
+| `updateThemeSettingsMediaUsage()`     | Update tracking for theme settings |
 | `removePageFromMediaUsage()`          | Remove page from tracking          |
+| `syncPageMediaUsageOnWrite()` / `syncPageMediaUsageOnDelete()` | Page save/delete wrappers (handle slug renames) |
+| `updateCollectionItemMediaUsage()` / `removeCollectionItemFromMediaUsage()` / `syncCollectionItemMediaUsageOnWrite()` | Collection item usage tracking |
 | `getMediaUsage()`                     | Get pages/widgets using file       |
 | `refreshAllMediaUsage()`              | Scan all and rebuild tracking      |
+| `refreshMediaUsageAfterStructuralChange()` | Full rescan after bulk operations |
 
 ### Hooks Used
 
@@ -342,12 +346,13 @@ Owns schema validation/migration, item CRUD with atomic + slug-safe writes, `_or
 | `getTheme(id)`            | GET    | `/api/themes/:id`                |
 | `getThemeWidgets(id)`     | GET    | `/api/themes/:id/widgets`        |
 | `getThemeTemplates(id)`   | GET    | `/api/themes/:id/templates`      |
-| `getThemeSettings()`      | GET    | `/api/themes/project/:projectId` |
-| `saveThemeSettings(data)` | POST   | `/api/themes/project/:projectId` |
+| `getThemeSettings(projectId)` | GET | `/api/themes/project/:projectId` |
+| `saveThemeSettings(projectId, data)` | POST | `/api/themes/project/:projectId` |
 | `uploadThemeZip(file)`    | POST   | `/api/themes/upload`             |
 | `getThemeVersions(id)`    | GET    | `/api/themes/:id/versions`       |
 | `getThemeUpdateCount()`   | GET    | `/api/themes/update-count`       |
 | `updateTheme(id)`         | POST   | `/api/themes/:id/update`         |
+| `deleteTheme(id)`         | DELETE | `/api/themes/:id`                |
 
 ### Server Controller (`server/controllers/themeController.js`)
 
@@ -366,6 +371,8 @@ Owns schema validation/migration, item CRUD with atomic + slug-safe writes, `_or
 | `handleThemeUpload()`        | Configure theme ZIP upload middleware |
 | `getThemeUpdateCount()`      | Count themes with pending updates |
 | `updateTheme()`              | Build latest/ for single theme    |
+| `deleteTheme()`              | Delete a theme (if unused by projects) |
+| `getProjectThemeLocale()`    | Get theme locale JSON for a project |
 | `getThemePresets()`          | Get presets for a theme            |
 | `resolvePresetPaths()`       | Resolve preset templates/menus/settings with fallback |
 | `getProjectThemeSettings()`  | Get project theme settings        |
@@ -378,7 +385,7 @@ Owns schema validation/migration, item CRUD with atomic + slug-safe writes, `_or
 | Function                      | Purpose                               |
 | ----------------------------- | ------------------------------------- |
 | `checkForUpdates(projectId)`  | Check if update available for project |
-| `toggleThemeUpdates(projectId)` | Toggle project `receiveThemeUpdates` |
+| `toggleThemeUpdates(projectId, enabled)` | Toggle project `receiveThemeUpdates` |
 | `mergeThemeSettings()`        | Merge user + new theme.json settings  |
 | `applyThemeUpdate(projectId)` | Apply update to project               |
 
@@ -438,6 +445,7 @@ When a project theme update is applied successfully, the frontend invalidates th
 | Function                  | Purpose                     |
 | ------------------------- | --------------------------- |
 | `exportProject()`         | Main export handler         |
+| `exportProjectToDir()`    | Core export logic (renders pages, collection items, assets to an output dir) |
 | `getExportHistory()`      | Get export history          |
 | `deleteExport()`          | Delete export version       |
 | `getExportFiles()`        | Get entry file info         |
@@ -454,12 +462,15 @@ When a project theme update is applied successfully, the frontend invalidates th
 
 ### Service (`server/services/renderingService.js`)
 
-| Function                    | Purpose                                 |
-| --------------------------- | --------------------------------------- |
-| `renderWidget()`            | Render widget using Liquid              |
-| `renderPageLayout()`        | Render full page layout                 |
-| `createBaseRenderContext()` | Create context with theme, media, icons |
-| `getOrCreateEngine()`       | Get cached Liquid engine                |
+| Function                      | Purpose                                 |
+| ----------------------------- | --------------------------------------- |
+| `renderWidget()`              | Render widget using Liquid              |
+| `renderPageLayout()`          | Render full page layout                 |
+| `renderCollectionItemPage()`  | Render a collection item via its type's `template.liquid` |
+| `createBaseRenderContext()`   | Create context with theme, media, icons |
+| `renderEnqueuedAssetTags()`   | Render enqueued style/script tags       |
+
+(`getOrCreateEngine()` / `configureLiquidEngine()` are internal — per-project Liquid engine caching and tag/filter registration.)
 
 ### Hook Used
 
@@ -533,27 +544,33 @@ When a project theme update is applied successfully, the frontend invalidates th
 ### Frontend Files
 
 - `src/components/pageEditor/PreviewPanel.jsx` - Preview iframe
-- `src/pages/PagePreview.jsx` - Standalone preview page
+- `src/pages/SitePreviewLayout.jsx` - Shared shell for standalone preview routes (`/preview/*`)
+- `src/pages/PagePreview.jsx` - Standalone page preview (`/preview/:pageId`)
+- `src/pages/CollectionItemPagePreview.jsx` - Standalone collection item preview (`/preview/collection/:prefix/:slug`)
 
 ### Query Layer (`src/queries/previewManager.js`)
 
 | Function                   | Purpose                      |
 | -------------------------- | ---------------------------- |
+| `fetchPreviewToken()`      | Mint a preview token (HTML served at `/render/:token`) |
 | `fetchPreview()`           | Get full page HTML           |
 | `fetchRenderedWidget()`    | Render single widget         |
 | `updatePreview()`          | Morph changed widgets        |
-| `settingsToCssVariables()` | Convert settings to CSS vars |
-| `updateWidgetSetting()`    | Update widget in preview     |
 | `getGlobalWidgets()`       | Fetch header/footer          |
 | `saveGlobalWidget()`       | Save global widget           |
 | `getProjectWidgets()`      | Fetch widget schemas         |
-| `scrollWidgetIntoView()`   | Scroll to widget             |
+| `scrollElementIntoView()`  | Scroll to widget/block       |
+
+(`settingsToCssVariables()` is an internal helper used by the preview-update path to convert theme settings to CSS variables.)
 
 ### Server Controller (`server/controllers/previewController.js`)
 
 | Function               | Purpose                 |
 | ---------------------- | ----------------------- |
 | `generatePreview()`    | Generate full page HTML |
+| `createPreviewToken()` | Mint preview token for a page (POST `/api/preview/token`) |
+| `createCollectionPreviewToken()` | Mint preview token for a collection item (POST `/api/preview/collection`) |
+| `renderPreviewToken()` | Serve tokenized preview HTML (GET `/render/:token`, mounted in `createApp.js`) |
 | `renderSingleWidget()` | Render single widget    |
 | `getGlobalWidgets()`   | Get header/footer data  |
 | `saveGlobalWidget()`   | Save global widget      |
@@ -602,13 +619,14 @@ Design mode detection is injected by `previewController.js` as an inline `<scrip
 | `WidgetSelector.jsx`      | Widget picker modal              |
 | `WidgetInsertionZone.jsx` | Insert widget UI                 |
 | `SelectionOverlay.jsx`    | Preview selection overlay        |
-| `WidgetItem.jsx`          | Widget item in sidebar           |
-| `SortableWidgetItem.jsx`  | Draggable widget wrapper         |
-| `FixedWidgetItem.jsx`     | Non-draggable header/footer      |
-| `BlockItem.jsx`           | Block item in widget             |
-| `SortableBlockItem.jsx`   | Draggable block wrapper          |
-| `BlockSelector.jsx`       | Block picker modal               |
-| `BlockInsertionZone.jsx`  | Insert block UI                  |
+| `widgets/WidgetItem.jsx`          | Widget item in sidebar           |
+| `widgets/SortableWidgetItem.jsx`  | Draggable widget wrapper         |
+| `widgets/FixedWidgetItem.jsx`     | Non-draggable header/footer      |
+| `widgets/WidgetSection.jsx`       | Sidebar widget section grouping  |
+| `blocks/BlockItem.jsx`            | Block item in widget             |
+| `blocks/SortableBlockItem.jsx`    | Draggable block wrapper          |
+| `blocks/BlockSelector.jsx`        | Block picker modal               |
+| `blocks/BlockInsertionZone.jsx`   | Insert block UI                  |
 
 ### Store (`src/stores/pageStore.js`)
 
@@ -714,7 +732,7 @@ Save button / Auto-save timer
 | `server/utils/projectHelpers.js` | `getProjectFolderName(projectId)`, `getProjectDetails()` |
 | `server/utils/pathSecurity.js` | `isWithinDirectory()` |
 | `server/utils/projectErrors.js` | `PROJECT_ERROR_CODES`, `handleProjectResolutionError()`, `isProjectResolutionError()` |
-| `server/createApp.js` | Editor app factory — exports `createEditorApiApp()` (API routes + middleware) and `createEditorUiApp()` (static files + SPA catch-all) |
+| `server/createApp.js` | Editor app factory — exports `createEditorApp()` (shared middleware + API routes + static files + SPA catch-all; also mounts `GET /render/:token`) |
 
 ### Shared Hooks
 
@@ -724,7 +742,7 @@ Save button / Auto-save timer
 | `useConfirmationModal`   | Confirmation modal state                | Pages, Menus, Media, Projects, Export |
 | `useFormatDate`          | App-aware date formatting               | Main list/history surfaces            |
 | `useFormNavigationGuard` | Prevent navigation with unsaved changes | All forms                             |
-| `useThemeLocale`         | Fetches the active project's theme locale JSON, provides `tTheme()` resolver for `tTheme:`-prefixed i18n keys | Editor components (SettingsPanel, ThemeSelector, PreviewPanel, BlockList, etc.) |
+| `useThemeLocale`         | Fetches the active project's theme locale JSON, provides `tTheme()` resolver for `tTheme:`-prefixed i18n keys | Editor components (SettingsPanel, ThemeSelector, PreviewPanel, BlockItem, etc.) |
 | `useToastStore`          | Toast notifications                     | All pages                             |
 
 ### Shared Stores
@@ -777,4 +795,4 @@ Save button / Auto-save timer
 | `resetForProjectChange()`                        | Clear state and invalidate in-flight loads |
 | `reset()`                                        | Clear all state                            |
 
-**Used by:** Settings page as the canonical owner, plus the page editor/save flow. `pageStore` keeps only a snapshot proxy for undo/redo. Project switches are coordinated from `RequireActiveProject`, which calls the relevant store reset actions before remounting the workspace subtree.
+**Used by:** Settings page as the canonical owner, plus the page editor/save flow. `pageStore` keeps only a snapshot proxy for undo/redo. Project switches are coordinated from `src/App.jsx` via `handleActiveProjectChange()` (`src/lib/projectSwitchCoordinator.js`), which calls the relevant store reset actions; `RequireActiveProject` remounts the workspace subtree by keying the outlet on the project ID.

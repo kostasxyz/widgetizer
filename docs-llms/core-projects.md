@@ -31,7 +31,7 @@ The application uses `react-router-dom` to handle navigation between these pages
 ### Admin vs Workspace Flow
 
 - `/projects`, `/themes`, and `/app-settings` live inside `ProjectPickerLayout`, the admin shell.
-- `/pages`, `/menus`, `/media`, `/settings`, and `/export-site` live inside the site workspace shell and require an active project.
+- `/pages`, `/menus`, `/media`, `/collections/:type`, `/settings`, and `/export-site` live inside the site workspace shell and require an active project.
 - Project-selection routes can preserve a `next` query param. `resolveWorkspaceDestination()` normalizes that value so project creation/opening can return the user to the intended workspace tool (default: `/pages`).
 
 ---
@@ -64,18 +64,20 @@ This file contains functions that make API calls to the backend:
 
 1.  **Navigation**: The user clicks the "New project" button on the `Projects.jsx` page, which navigates them to `/projects/add`.
 2.  **Rendering**: The `ProjectsAdd.jsx` page is rendered. It contains the `ProjectForm.jsx` component.
-3.  **Navigation Guard**: The page integrates `useFormNavigationGuard` to prevent accidental navigation with unsaved changes.
+3.  **Navigation Guard**: The page integrates `useGuardedFormPage` (a wrapper around `useFormNavigationGuard`) to prevent accidental navigation with unsaved changes.
 4.  **Theme Loading**: `ProjectForm.jsx` makes an API call via `/api/themes` to fetch the list of available themes and populates the "Theme" dropdown.
 5.  **User Input**: The user fills in the title and selects a theme. Additional fields (folder name, description, site title, website address) are available under "More settings". The "Theme" dropdown is only enabled during project creation.
 5b. **Preset Selection**: If the selected theme has presets, a visual card grid appears below the theme dropdown showing available presets (screenshot, name, description). The default preset is pre-selected. The user can click a different preset card to switch. Presets are fetched from `GET /api/themes/{themeId}/presets` via `getThemePresets()` in `themeManager.js`.
 6.  **Form Validation**: react-hook-form provides real-time validation with localized error messages.
 7.  **Submission**: The user clicks the "Create Project" button. `ProjectForm` automatically generates a URL-friendly folder name (slug) from the title and calls the `onSubmit` handler provided by `ProjectsAdd.jsx`.
 8.  **API Call**: `ProjectsAdd.jsx`'s `handleSubmit` function calls `createProject(formData)` from `projectManager.js`, which sends a `POST` request to the backend API to create the new project.
-9.  **Theme Copy to Project Data**: On successful creation, the selected theme's files are copied into the new project's data directory at `/data/projects/<folderName>/`, including `layout.liquid`, `templates/`, `widgets/`, `assets/`, `menus/`, `snippets/`, `theme.json`, and `locales/`. In packaged Electron builds, base themes are seeded from `app.asar.unpacked/themes/` into the installed themes directory (`data/themes/`) on first access. The `presets/` directory is excluded from the project copy. These become the project's working theme files.
+9.  **Theme Copy to Project Data**: On successful creation, the selected theme's files are copied into the new project's data directory at `/data/projects/<folderName>/`, including `layout.liquid`, `widgets/`, `assets/`, `menus/`, `snippets/`, `collection-types/`, `theme.json`, and `locales/`. Theme `templates/` are not copied verbatim — they are processed into page JSON files under `pages/` via `processTemplatesRecursive` (each page template gets a fresh `uuid`, `slug`, and timestamps). In packaged Electron builds, base themes are seeded from `app.asar.unpacked/themes/` into the installed themes directory (`data/themes/`) on first access. The `presets/` directory (along with the theme versioning directories `updates/` and `latest/`) is excluded from the project copy. These become the project's working theme files.
 9b. **Preset Application**: If a preset was selected during creation, the system applies preset overrides after the theme copy:
     - **Templates**: If the preset has its own `templates/` directory, those templates are used instead of the root theme templates for the `processTemplatesRecursive` step.
     - **Menus**: If the preset has its own `menus/` directory, the root menus already copied into the project are removed and replaced with the preset's menus. This happens before menu enrichment (step 10).
     - **Settings Overrides**: The preset's `preset.json` contains a flat map of `{ setting_id: value }` overrides. The system walks the project's `theme.json > settings.global` groups and updates the `default` field for any setting whose `id` matches a key in the overrides map. This applies colors, fonts, animations, and any other theme settings defined by the preset.
+    - **Collections**: If the preset ships a `collections/` directory, its collection item data is seeded into the project (`seedPresetCollections`). Each item gets a fresh `uuid` and timestamps, and preset menu/link references to those items are remapped to the new UUIDs. Collection schemas always come from the theme's `collection-types/` — items whose type the theme doesn't define are skipped.
+    - **Media**: If the preset ships a `media/` directory, its starter images are copied into the project's `uploads/images/` and each entry in the preset's `manifest.json` is registered in the media database with a fresh project-scoped ID (`seedPresetMedia`).
     - The selected preset ID is stored in the project metadata as `preset`.
 9c. **Theme Locale Ownership**: The editor locale API reads the project's copied `locales/` files, not the shared installed theme copy under `data/themes/`. This means locale changes follow the same per-project update boundary as other theme files.
 10. **Link Enrichment**: After copying theme files, the system enriches all internal page links with `pageUuid`:
@@ -129,6 +131,7 @@ Projects can be imported from ZIP files previously exported from Widgetizer.
 5.  **Isolation**: Files are extracted to a temporary directory first for validation before any permanent changes.
 6.  **Project Creation**:
     - A new UUID is generated for the imported project
+    - If the project name collides with an existing project (case-insensitive), the import is renamed using the `(Copy)` / `(Copy N)` suffix scheme (`resolveProjectIdentity`, shared with project creation)
     - A unique `folderName` is generated (checking existing project metadata in SQLite and existing directories)
     - Files are copied from the temp directory to the new project directory
     - Project metadata is written to SQLite only after successful file copy
@@ -142,7 +145,7 @@ Projects can be imported from ZIP files previously exported from Widgetizer.
 
 1.  **Navigation**: From the project list, clicking the "Edit" icon navigates the user to `/projects/edit/:id`.
 2.  **Data Fetching**: `ProjectsEdit.jsx` loads. In its `useEffect` hook, it calls `getAllProjects()` and finds the specific project matching the `id` from the URL parameters to populate the form. Because that list query is cached, successful project mutations invalidate it so the editor reload path sees fresh project metadata instead of stale list data.
-3.  **Navigation Guard**: `useFormNavigationGuard` is integrated to prevent accidental navigation with unsaved changes.
+3.  **Navigation Guard**: `useGuardedFormPage` (a wrapper around `useFormNavigationGuard`) is integrated to prevent accidental navigation with unsaved changes.
 4.  **Rendering**: The `ProjectForm.jsx` component is rendered with the `initialData` of the project being edited with several key features:
     - **Theme Restriction**: The "Theme" dropdown is disabled, as themes cannot be changed after creation to maintain consistency
     - **Project Folder Name**: Editable field for the project's folder name, independent of the project title
