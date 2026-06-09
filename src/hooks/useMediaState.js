@@ -75,7 +75,7 @@ export default function useMediaState() {
       // Ensure all files have a metadata object
       const filesWithMetadata = (data.files || []).map((file) => ({
         ...file,
-        metadata: file.metadata || { alt: "", title: "" },
+        metadata: file.metadata || { alt: "", title: "", caption: "" },
       }));
       setFiles(filesWithMetadata);
     } catch {

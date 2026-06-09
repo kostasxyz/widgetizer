@@ -821,27 +821,39 @@ describe("sanitizeImagePath", () => {
 
 // ============================================================================
 // gallery sanitization — via the exported entry points (the switch helpers are
-// private). Same rule everywhere: drop blank/invalid-src rows, strip caption HTML,
-// normalize non-array (incl. null/undefined) to [].
+// private). The value is a string[] of upload paths. Same rule everywhere: drop
+// blank/invalid (or non-string) entries; normalize non-array (incl. null/undefined) to [].
 // ============================================================================
 
 describe("gallery sanitization", () => {
   const widgetSchema = { settings: [{ id: "gallery", type: "gallery" }], blocks: [] };
 
-  it("keeps valid upload srcs, drops blank/invalid rows, strips caption HTML (widget)", () => {
+  it("keeps valid upload paths, drops blank/invalid entries (widget)", () => {
     const data = {
       settings: {
         gallery: [
-          { src: "/uploads/images/a.jpg", caption: "Bay <b>at dusk</b>" },
-          { src: "javascript:alert(1)", caption: "evil" },
-          { src: "../../etc/passwd", caption: "traversal" },
-          { src: "https://evil.example/x.jpg", caption: "external" },
-          { src: "", caption: "blank" },
+          "/uploads/images/a.jpg",
+          "javascript:alert(1)",
+          "../../etc/passwd",
+          "https://evil.example/x.jpg",
+          "",
         ],
       },
     };
     sanitizeWidgetData(data, widgetSchema);
-    assert.deepEqual(data.settings.gallery, [{ src: "/uploads/images/a.jpg", caption: "Bay at dusk" }]);
+    assert.deepEqual(data.settings.gallery, ["/uploads/images/a.jpg"]);
+  });
+
+  it("drops a legacy { src, caption } object entry — NOT coerced to its src", () => {
+    // Locks the "no legacy handling / no coercion" decision: an old object-shaped entry
+    // is removed, never converted to a string. (future-image-caption-field.md §5.3.)
+    const data = {
+      settings: {
+        gallery: [{ src: "/uploads/images/legacy.jpg", caption: "old" }, "/uploads/images/new.jpg"],
+      },
+    };
+    sanitizeWidgetData(data, widgetSchema);
+    assert.deepEqual(data.settings.gallery, ["/uploads/images/new.jpg"]);
   });
 
   it("normalizes a non-array gallery to [] (widget)", () => {
@@ -862,14 +874,11 @@ describe("gallery sanitization", () => {
   it("sanitizes a gallery in a collection item", () => {
     const item = {
       settings: {
-        gallery: [
-          { src: "/uploads/images/room.jpg", caption: "Suite <b>deluxe</b>" },
-          { src: "data:text/html,<script>x</script>", caption: "bad" },
-        ],
+        gallery: ["/uploads/images/room.jpg", "data:text/html,<script>x</script>"],
       },
     };
     sanitizeCollectionItemData(item, { settings: [{ id: "gallery", type: "gallery" }] });
-    assert.deepEqual(item.settings.gallery, [{ src: "/uploads/images/room.jpg", caption: "Suite deluxe" }]);
+    assert.deepEqual(item.settings.gallery, ["/uploads/images/room.jpg"]);
   });
 
   it("sanitizes a gallery value in theme settings (and does not mutate the input)", () => {
@@ -880,17 +889,14 @@ describe("gallery sanitization", () => {
             {
               type: "gallery",
               id: "showcase",
-              value: [
-                { src: "/uploads/images/t.jpg", caption: "<i>hi</i>" },
-                { src: "javascript:alert(1)", caption: "x" },
-              ],
+              value: ["/uploads/images/t.jpg", "javascript:alert(1)"],
             },
           ],
         },
       },
     };
     const { data } = sanitizeThemeSettings(themeData);
-    assert.deepEqual(data.settings.global.media[0].value, [{ src: "/uploads/images/t.jpg", caption: "hi" }]);
+    assert.deepEqual(data.settings.global.media[0].value, ["/uploads/images/t.jpg"]);
     // input untouched (sanitizeThemeSettings clones)
     assert.equal(themeData.settings.global.media[0].value.length, 2);
   });

@@ -70,24 +70,18 @@ export function sanitizeImagePath(value) {
 }
 
 /**
- * Sanitize a `gallery` value: an ordered array of { src, caption } entries.
- * - src: kept only if it is a safe upload image path; entries whose src does not
- *   survive are dropped, so render never emits empty figures and a gallery of
- *   only blank rows collapses to [].
- * - caption: plain text (rendered via Liquid autoescape); tag-stripped for cleanliness.
- * Non-array / malformed input normalizes to []. Shared by the widget/collection
- * sanitizer and the theme-settings sanitizer so all three behave identically.
+ * Sanitize a `gallery` value: an ordered array of upload-path strings. Each entry is
+ * kept only if it is a safe upload image path; anything else (a non-string, a bad path)
+ * yields "" and is dropped — so a non-string entry is removed, NOT coerced, and a gallery
+ * of only invalid entries collapses to []. Non-array / malformed input normalizes to [].
+ * Shared by the widget/collection sanitizer and the theme-settings sanitizer so all three
+ * behave identically. (Image alt/title/caption live on the media record, not the gallery.)
  * @param {*} value
- * @returns {Array<{src: string, caption: string}>}
+ * @returns {string[]}
  */
 function sanitizeGalleryValue(value) {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((entry) => ({
-      src: sanitizeImagePath(entry?.src),
-      caption: stripHtmlTags(typeof entry?.caption === "string" ? entry.caption : ""),
-    }))
-    .filter((entry) => entry.src !== "");
+  return value.map((entry) => sanitizeImagePath(entry)).filter((src) => src !== "");
 }
 
 /**

@@ -399,21 +399,20 @@ An image uploader that includes a preview, the ability to replace the image, and
 
 ### Gallery
 
-A repeatable list of images, each with an optional per-image caption. Where `image` holds a **single** upload path, `gallery` lets the user add any number of images, reorder them by dragging, and write a caption beneath each. Usable in widget, theme, and collection-type schemas.
+A repeatable list of images. Where `image` holds a **single** upload path, `gallery` lets the user add any number of images and reorder them by dragging. Usable in widget, theme, and collection-type schemas.
 
-The stored value is an **ordered array of `{ src, caption }` objects**:
+The stored value is an **ordered array of upload-path strings**:
 
 ```json
 "gallery": [
-  { "src": "/uploads/images/suite-01.jpg", "caption": "Caldera at dusk" },
-  { "src": "/uploads/images/suite-02.jpg", "caption": "" }
+  "/uploads/images/suite-01.jpg",
+  "/uploads/images/suite-02.jpg"
 ]
 ```
 
-- `src` — an upload path, exactly like a single `image` value. Image **alt/title** stay on the media record (edited via the Edit-metadata drawer), not in the setting.
-- `caption` — per-usage plain text authored on the item/widget; empty string when unset.
+- Each entry is an upload path, exactly like a single `image` value. Image **alt/title/caption** all live on the **media record** (edited via the Edit-metadata drawer), not in the gallery — so the gallery carries paths only.
 - Empty value is `[]`; order is authored (drag-to-reorder) and preserved on save.
-- The `GalleryInput` editor never commits a blank row, and any row whose `src` is blank or not a valid `/uploads/images/...` path is dropped during **render sanitization** (writes store the raw value; sanitization happens at render, like other setting types) — so a template never receives an empty entry. A `required` gallery counts as missing until it has at least one entry with a valid `src`.
+- The `GalleryInput` editor never commits a blank row, and any entry that is blank or not a valid `/uploads/images/...` path is dropped during **render sanitization** (writes store the raw value; sanitization happens at render, like other setting types) — so a template never receives an empty entry. A `required` gallery counts as missing until it has at least one valid path. (The value is a plain `string[]`; a non-string entry is dropped, never coerced.)
 
 ```json
 {
@@ -426,20 +425,19 @@ The stored value is an **ordered array of `{ src, caption }` objects**:
 
 **Usage in Templates:**
 
-The value is plain iterable data — loop it directly (no special tag) and resolve each `src` with the existing `{% image %}` tag. Guard `img.src` so a stray empty row never renders:
+The value is a plain `string[]` — loop it directly (no special tag) and resolve each path with the existing `{% image %}` tag. Guard each entry so a stray empty one never renders:
 
 ```liquid
 {% for img in item.settings.gallery %}
-  {% if img.src != blank %}
+  {% if img != blank %}
     <figure>
-      {% image src: img.src, size: 'large' %}
-      {% if img.caption != blank %}<figcaption>{{ img.caption }}</figcaption>{% endif %}
+      {% image src: img, size: 'large' %}
     </figure>
   {% endif %}
 {% endfor %}
 ```
 
-`{% image %}` resolves `img.src` (depth-aware path + media metadata for alt) exactly as for a single `image`; `{{ img.caption }}` is autoescaped.
+`{% image %}` resolves each path (depth-aware path + media metadata for alt/title) exactly as for a single `image`. Image **alt/title/caption** come from the media record; if a theme wants to display the caption, resolve it from the path with the `media_meta` filter (e.g. `{{ img | media_meta: 'caption' }}`).
 
 ### File
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { X, Search, FileText } from "lucide-react";
 import { API_URL } from "../../config";
@@ -107,7 +108,10 @@ export default function MediaSelectorDrawer({ visible, onClose, onSelect, active
 
   if (!visible) return null;
 
-  return (
+  // Portaled to <body> so the fixed overlay escapes any ancestor stacking context
+  // (e.g. a @dnd-kit sortable row's position/z-index, which would otherwise let
+  // sibling rows paint on top of the overlay).
+  return createPortal(
     <div
       className="fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ease-in-out"
       onClick={onClose}
@@ -207,6 +211,7 @@ export default function MediaSelectorDrawer({ visible, onClose, onSelect, active
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

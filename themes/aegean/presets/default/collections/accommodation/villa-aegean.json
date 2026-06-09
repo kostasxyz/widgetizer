@@ -17,10 +17,10 @@
     "bed_type": "Two king bedrooms",
     "view": "Panoramic caldera view",
     "gallery": [
-      { "src": "/uploads/images/aegean-18.jpg", "caption": "" },
-      { "src": "/uploads/images/aegean-16.jpg", "caption": "" },
-      { "src": "/uploads/images/aegean-13.jpg", "caption": "" },
-      { "src": "/uploads/images/aegean-11.jpg", "caption": "" }
+      "/uploads/images/aegean-18.jpg",
+      "/uploads/images/aegean-16.jpg",
+      "/uploads/images/aegean-13.jpg",
+      "/uploads/images/aegean-11.jpg"
     ],
     "amenity_sea_view": true,
     "amenity_balcony": true,

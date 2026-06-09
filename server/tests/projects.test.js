@@ -1654,6 +1654,7 @@ describe("importProject", () => {
 
   it("restores media metadata from ZIP into SQLite", async () => {
     const mediaData = createTestMediaData();
+    mediaData.files[0].metadata.caption = "Golden hour over the caldera"; // exercise caption round-trip
     const zipFile = buildImportZip(baseManifest, {
       "theme.json": { name: "Test Theme", version: "1.0.0" },
       "uploads/media.json": mediaData,
@@ -1668,6 +1669,9 @@ describe("importProject", () => {
     const imported = mediaRepo.getMediaFiles(res._json.id);
     assert.equal(imported.files.length, 2);
     assert.equal(imported.files[0].filename, "photo.jpg");
+    // caption survives export (media.json) → import (writeMediaData → insertMediaFile → rowToMediaFile)
+    assert.equal(imported.files[0].metadata.caption, "Golden hour over the caldera");
+    assert.equal(imported.files[1].metadata.caption, ""); // file without a caption defaults to ""
     assert.equal(imported.files[1].filename, "banner.png");
 
     // media.json should be cleaned up from disk

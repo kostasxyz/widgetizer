@@ -137,10 +137,9 @@
           {% if gallery.size > 0 %}
             <div class="room-thumbs">
               {% for img in gallery %}
-                {% if img.src != blank %}
-                  {% assign thumb_alt = img.caption | default: item.settings.title %}
-                  <button type="button" class="room-thumb" data-lightbox="room-{{ item.slug }}" data-lightbox-src="{% image src: img.src, size: 'hero', output: 'url' %}" aria-label="View photo {{ forloop.index }}">
-                    {% image src: img.src, size: 'small', alt: thumb_alt %}
+                {% if img != blank %}
+                  <button type="button" class="room-thumb" data-lightbox="room-{{ item.slug }}" data-lightbox-src="{% image src: img, size: 'hero', output: 'url' %}" aria-label="View photo {{ forloop.index }}">
+                    {% image src: img, size: 'small' %}
                   </button>
                 {% endif %}
               {% endfor %}

@@ -102,7 +102,7 @@ A collection type reuses existing setting types (the same ones widgets and `them
 - **`usedAsTitle: true`** — marks the field used as the item's display name in listings and as the source for auto-generated slugs. **Exactly one non-`header` setting must declare this**, and it must be a `text` field.
 - **`required: true`** — enforced on save and on export.
 
-For multiple images, use the `gallery` field type — an ordered list of images, each with an optional caption (the `image` type holds a single value). See [Setting Types](theming-setting-types.md). A *generic* repeater (arbitrary repeating blocks) remains deferred — see "Out of Scope".
+For multiple images, use the `gallery` field type — an ordered list of image upload paths (a `string[]`; the `image` type holds a single value). Per-image `alt`/`title`/`caption` live on the media record, not the gallery. See [Setting Types](theming-setting-types.md). A *generic* repeater (arbitrary repeating blocks) remains deferred — see "Out of Scope".
 
 ### SEO (item pages)
 

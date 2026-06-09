@@ -151,7 +151,7 @@ export default function useMediaUpload({ activeProject, showToast, setFiles }) {
       if (allProcessedFiles.length > 0) {
         const newFilesWithMetadata = allProcessedFiles.map((file) => ({
           ...file,
-          metadata: file.metadata || { alt: "", title: "" },
+          metadata: file.metadata || { alt: "", title: "", caption: "" },
         }));
         setFiles((prevFiles) => [...prevFiles, ...newFilesWithMetadata]);
       }

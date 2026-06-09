@@ -103,7 +103,7 @@ export async function seedPresetCollections(folderName, presetCollectionsDir) {
  *
  *   media/
  *     images/        # binaries: originals + pre-generated -large/-medium/-small/-thumb variants
- *     manifest.json  # { files: [{ filename, type, size, path, width, height, alt, title, sizes }] }
+ *     manifest.json  # { files: [{ filename, type, size, path, width, height, alt, title, caption, sizes }] }
  *
  * The binaries are copied into the project's uploads/images/ verbatim (their
  * /uploads/images/... paths are identical across projects, so the image field
@@ -138,7 +138,7 @@ export async function seedPresetMedia(folderName, projectId, presetMediaDir) {
       path: entry.path || `/uploads/images/${entry.filename}`,
       width: entry.width || null,
       height: entry.height || null,
-      metadata: { alt: entry.alt || "", title: entry.title || "" },
+      metadata: { alt: entry.alt || "", title: entry.title || "", caption: entry.caption || "" },
       sizes: entry.sizes || {},
     });
   }

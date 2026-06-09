@@ -472,10 +472,7 @@ describe("updateThemeSettingsMediaUsage", () => {
             {
               type: "gallery",
               id: "showcase",
-              value: [
-                { src: "/uploads/images/hero.jpg", caption: "a" },
-                { src: "/uploads/images/logo.png", caption: "b" },
-              ],
+              value: ["/uploads/images/hero.jpg", "/uploads/images/logo.png"],
             },
           ],
         },

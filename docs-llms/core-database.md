@@ -39,7 +39,7 @@ Runtime DB settings:
 - `app_settings`
   - key/value settings store (`activeProjectId`, app config)
 - `media_files`
-  - media file metadata for a project
+  - media file metadata for a project (incl. `alt`, `title`, `caption` text columns; `caption` added in migration v2)
 - `media_sizes`
   - generated image variants per file (`thumb`, `small`, etc.)
 - `media_usage`

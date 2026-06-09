@@ -1,11 +1,15 @@
-# Future: `gallery` setting type (repeating image + caption)
+# Future: `gallery` setting type (repeating image)
 
-> **Status: ✅ Implemented.** Shipped as the `gallery` setting type: registration,
-> sanitization (`sanitizeImagePath` + `sanitizeGalleryValue`), collection
-> defaults/required, theme media-usage, `GalleryInput`, and the Aegean migration (§8).
-> This doc is retained as the design/rationale record; the author-facing reference now
-> lives in `theming-setting-types.md`, and the `core-collections.md` §11 out-of-scope
-> line has been removed.
+> **Status: ✅ Implemented — value shape since revised.** Shipped as the `gallery`
+> setting type: registration, sanitization (`sanitizeImagePath` + `sanitizeGalleryValue`),
+> collection defaults/required, theme media-usage, and `GalleryInput`.
+>
+> **⚠️ Superseded in part:** the original per-entry `caption` was **removed**. Caption now
+> lives on the **media record** alongside `alt`/`title`, and the gallery value is a plain
+> **`string[]` of upload paths** — see [`future-image-caption-field.md`](future-image-caption-field.md).
+> The sections below that describe `{ src, caption }` objects are kept as the original
+> design record; read them as history, not current behavior. The author-facing reference
+> is [`theming-setting-types.md`](theming-setting-types.md).
 
 ## 1. Motivation
 
@@ -21,7 +25,12 @@ purpose — usable in widget, theme, and collection-type schemas — not collect
 
 ## 2. Value shape
 
-A `gallery` value is an **ordered array of entry objects**:
+> **Current shape (revised):** a `gallery` value is an **ordered array of upload-path
+> strings** — `["/uploads/images/suite-01.jpg", …]`. All descriptive text (`alt`, `title`,
+> `caption`) lives on the media record. The original per-entry-object design below is kept
+> as history. See [`future-image-caption-field.md`](future-image-caption-field.md) §5.
+
+~~A `gallery` value is an **ordered array of entry objects**:~~ *(superseded)*
 
 ```json
 "gallery": [
@@ -34,13 +43,9 @@ A `gallery` value is an **ordered array of entry objects**:
   stay on the **media record** (per-file, edited via the existing Edit-metadata
   drawer), not in the setting — consistent with `image`. Resolution at render goes
   through the existing `{% image %}` tag / `imagePath`.
-- `caption` — per-**usage** plain text authored on the item/widget. Empty string when
-  unset. This is the new per-entry field captions need (a media record can't hold a
-  context-specific caption).
+- ~~`caption` — per-**usage** plain text authored on the item/widget.~~ *Removed: caption
+  is now a media-record field (per-image), not per-usage.*
 - Empty value is `[]`. Order is authored (drag-to-reorder), preserved on save.
-
-This is the first **array-of-objects** value in collection item settings (v1 settings
-were flat scalars / single objects). See §7 for the data-model implications.
 
 ## 3. Registration (single source of truth)
 

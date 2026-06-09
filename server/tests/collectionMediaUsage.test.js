@@ -75,18 +75,14 @@ beforeEach(async () => {
 });
 
 // ============================================================================
-// extractMediaPathsFromCollectionItem — gallery (array-of-objects) walking
+// extractMediaPathsFromCollectionItem — gallery (string[] of upload paths) walking
 // ============================================================================
 
 describe("extractMediaPathsFromCollectionItem — gallery", () => {
-  it("extracts each gallery entry's upload src and skips blank ones", () => {
+  it("extracts each gallery upload path and skips blank ones", () => {
     const item = {
       settings: {
-        gallery: [
-          { src: "/uploads/images/hero.jpg", caption: "A" },
-          { src: "/uploads/images/other.jpg", caption: "" },
-          { src: "", caption: "blank row, no src" },
-        ],
+        gallery: ["/uploads/images/hero.jpg", "/uploads/images/other.jpg", ""],
       },
     };
     const paths = extractMediaPathsFromCollectionItem(item).sort();

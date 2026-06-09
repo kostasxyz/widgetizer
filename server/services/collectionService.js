@@ -286,11 +286,11 @@ function emptyDefaultForType(type) {
 /** Whether a required field's value should count as missing (flags invalid). */
 function isMissingValue(value, type) {
   if (type === "gallery") {
-    // Missing unless at least one entry has a valid upload-path src. Reuses the
-    // sanitizer's sanitizeImagePath so "valid src" is consistent across
-    // validation and sanitization: a blank or non-upload src (javascript:, ../)
-    // does not count as present. Runs on raw data (this path never sanitizes).
-    return !Array.isArray(value) || !value.some((e) => e && sanitizeImagePath(e.src) !== "");
+    // gallery is a string[] of upload paths. Missing unless at least one entry is a
+    // valid upload path. Reuses sanitizeImagePath so "valid path" is consistent across
+    // validation and sanitization: a blank or non-upload string (javascript:, ../) — or
+    // a non-string entry — does not count as present. Runs on raw data (never sanitizes).
+    return !Array.isArray(value) || !value.some((s) => sanitizeImagePath(s) !== "");
   }
   if (type === "link") {
     return !value || typeof value.href !== "string" || value.href.trim() === "";

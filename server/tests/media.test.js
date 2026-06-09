@@ -854,6 +854,7 @@ describe("updateMediaMetadata", () => {
       {
         files: [
           { id: "meta-img", filename: "photo.jpg", type: "image/jpeg", metadata: { alt: "", title: "" } },
+          { id: "meta-pdf", filename: "doc.pdf", type: "application/pdf", metadata: { alt: "", title: "" } },
         ],
       },
     );
@@ -915,6 +916,42 @@ describe("updateMediaMetadata", () => {
     assert.equal(res._status, 200);
     assert.ok(!res._json.file.metadata.title.includes("<img"), "title should not contain img tags");
     assert.ok(res._json.file.metadata.title.includes("My Title"), "title should preserve text content");
+  });
+
+  it("updates and persists an image caption", async () => {
+    const res = await callController(updateMediaMetadata, {
+      params: { projectId: PROJECT_ID, fileId: "meta-img" },
+      body: { alt: "Has caption", title: "T", caption: "Caldera at dusk" },
+    });
+    assert.equal(res._status, 200);
+    assert.equal(res._json.file.metadata.caption, "Caldera at dusk");
+
+    const mediaData = await readMediaFile(PROJECT_ID);
+    const file = mediaData.files.find((f) => f.id === "meta-img");
+    assert.equal(file.metadata.caption, "Caldera at dusk");
+  });
+
+  it("strips HTML from caption", async () => {
+    const res = await callController(updateMediaMetadata, {
+      params: { projectId: PROJECT_ID, fileId: "meta-img" },
+      body: { alt: "Clean alt", caption: "Bay <b>at dusk</b>" },
+    });
+    assert.equal(res._status, 200);
+    assert.ok(!res._json.file.metadata.caption.includes("<b>"), "caption should not contain tags");
+    assert.ok(res._json.file.metadata.caption.includes("Bay"), "caption should preserve text content");
+  });
+
+  it("ignores caption for non-image files — stored as '' (data-layer image gate)", async () => {
+    const res = await callController(updateMediaMetadata, {
+      params: { projectId: PROJECT_ID, fileId: "meta-pdf" },
+      body: { alt: "PDF alt", caption: "should not be stored" },
+    });
+    assert.equal(res._status, 200);
+    assert.equal(res._json.file.metadata.caption, "");
+
+    const mediaData = await readMediaFile(PROJECT_ID);
+    const file = mediaData.files.find((f) => f.id === "meta-pdf");
+    assert.equal(file.metadata.caption, "");
   });
 });
 

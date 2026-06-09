@@ -80,6 +80,13 @@ const migrations = [
       `);
     },
   },
+  {
+    version: 2,
+    description: "Add caption column to media_files",
+    up(db) {
+      db.exec(`ALTER TABLE media_files ADD COLUMN caption TEXT DEFAULT ''`);
+    },
+  },
 ];
 
 /**

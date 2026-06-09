@@ -175,42 +175,50 @@ describe("gallery field", () => {
     assert.ok(empty.validationErrors.some((e) => e.fieldId === "gallery"));
 
     const blank = normalizeCollectionItem(
-      itemFile("b", { settings: { title: "B", gallery: [{ src: "", caption: "x" }] } }),
+      itemFile("b", { settings: { title: "B", gallery: [""] } }),
       schema,
     );
     assert.equal(blank.invalid, true);
 
     const bad = normalizeCollectionItem(
-      itemFile("c", { settings: { title: "C", gallery: [{ src: "javascript:alert(1)" }] } }),
+      itemFile("c", { settings: { title: "C", gallery: ["javascript:alert(1)"] } }),
       schema,
     );
     assert.equal(bad.invalid, true);
+
+    // A legacy { src } object entry is NOT a valid path string (no coercion), so it
+    // does not satisfy a required gallery. Locks the string-only contract here too.
+    const legacy = normalizeCollectionItem(
+      itemFile("c2", { settings: { title: "C2", gallery: [{ src: "/uploads/images/x.jpg" }] } }),
+      schema,
+    );
+    assert.equal(legacy.invalid, true);
   });
 
-  it("normalizeCollectionItem accepts a required gallery with at least one valid upload src", () => {
+  it("normalizeCollectionItem accepts a required gallery with at least one valid upload path", () => {
     const n = normalizeCollectionItem(
-      itemFile("d", { settings: { title: "D", gallery: [{ src: "/uploads/images/x.jpg", caption: "x" }] } }),
+      itemFile("d", { settings: { title: "D", gallery: ["/uploads/images/x.jpg"] } }),
       requiredGallerySchema(),
     );
     assert.equal(n.invalid, false);
     assert.deepEqual(n.validationErrors, []);
   });
 
-  it("buildCollectionItemData throws when a required gallery has no valid src", () => {
+  it("buildCollectionItemData throws when a required gallery has no valid path", () => {
     const schema = requiredGallerySchema();
     assert.throws(
-      () => buildCollectionItemData(schema, { slug: "x", settings: { title: "X", gallery: [{ src: "" }] } }),
+      () => buildCollectionItemData(schema, { slug: "x", settings: { title: "X", gallery: [""] } }),
       (err) => err.name === "CollectionValidationError",
     );
   });
 
-  it("buildCollectionItemData succeeds and stores the gallery when a valid src is present", () => {
+  it("buildCollectionItemData succeeds and stores the gallery when a valid path is present", () => {
     const schema = requiredGallerySchema();
     const { item } = buildCollectionItemData(schema, {
       slug: "y",
-      settings: { title: "Y", gallery: [{ src: "/uploads/images/y.jpg", caption: "c" }] },
+      settings: { title: "Y", gallery: ["/uploads/images/y.jpg"] },
     });
-    assert.deepEqual(item.settings.gallery, [{ src: "/uploads/images/y.jpg", caption: "c" }]);
+    assert.deepEqual(item.settings.gallery, ["/uploads/images/y.jpg"]);
   });
 });
 

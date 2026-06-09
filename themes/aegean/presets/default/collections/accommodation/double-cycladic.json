@@ -17,10 +17,10 @@
     "bed_type": "Queen bed",
     "view": "Village & partial sea view",
     "gallery": [
-      { "src": "/uploads/images/aegean-14.jpg", "caption": "" },
-      { "src": "/uploads/images/aegean-15.jpg", "caption": "" },
-      { "src": "/uploads/images/aegean-12.jpg", "caption": "" },
-      { "src": "/uploads/images/aegean-11.jpg", "caption": "" }
+      "/uploads/images/aegean-14.jpg",
+      "/uploads/images/aegean-15.jpg",
+      "/uploads/images/aegean-12.jpg",
+      "/uploads/images/aegean-11.jpg"
     ],
     "amenity_sea_view": true,
     "amenity_balcony": true,

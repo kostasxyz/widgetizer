@@ -17,13 +17,14 @@ import {
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 import Button, { IconButton } from "../../ui/Button";
 import ImageInput from "./ImageInput";
-import TextInput from "./TextInput";
 
 /**
- * GalleryInput — the `gallery` setting type: an ordered, repeatable list of
- * { src, caption } entries. Composes the existing ImageInput per row (so the
- * media-selector / upload / metadata flow behaves identically to a single
- * `image`) plus a per-entry caption, with drag-to-reorder via @dnd-kit.
+ * GalleryInput — the `gallery` setting type: an ordered, repeatable list of image
+ * upload paths. The committed value is a plain array of strings
+ * (`["/uploads/images/a.jpg", …]`). Composes the existing ImageInput per row (so the
+ * media-selector / upload / metadata flow behaves identically to a single `image`),
+ * with drag-to-reorder via @dnd-kit. (Image alt/title/caption live on the media
+ * record, edited via the metadata drawer — the gallery carries paths only.)
  *
  * Each row carries a stable client-side `uid`. It keys the dnd-kit sortable, the
  * React list, AND the row's hidden file-input id (`${id}-${uid}`): ImageInput
@@ -33,38 +34,34 @@ import TextInput from "./TextInput";
  *
  * Blank-`src` rows are kept editor-local (so a freshly-added row persists while
  * the user picks an image) but are NEVER committed: `onChange` only ever emits
- * entries that have a real src. That keeps the stored array free of empty rows
- * and aligned with the backend's src-aware required-field validation.
+ * real upload paths. That keeps the stored array free of empty rows and aligned
+ * with the backend's src-aware required-field validation.
  */
 
 let uidCounter = 0;
 const nextUid = () => `gallery-row-${(uidCounter += 1)}`;
 
-/** Incoming value (array of {src, caption}) → editable rows with stable uids. */
+/** Incoming value (array of upload-path strings) → editable rows with stable uids.
+ *  Non-string entries are dropped, not coerced — the value shape is string[]. */
 function toRows(value) {
   if (!Array.isArray(value)) return [];
   return value
-    .filter((entry) => entry && typeof entry === "object")
-    .map((entry) => ({
-      uid: nextUid(),
-      src: typeof entry.src === "string" ? entry.src : "",
-      caption: typeof entry.caption === "string" ? entry.caption : "",
-    }));
+    .filter((src) => typeof src === "string" && src !== "")
+    .map((src) => ({ uid: nextUid(), src }));
 }
 
-/** Editable rows → committed value (drops blank-src rows, keeps order). */
+/** Editable rows → committed value: a string[] of srcs (drops blank rows, keeps order). */
 function toValue(rows) {
-  return rows.filter((r) => r.src).map((r) => ({ src: r.src, caption: r.caption }));
+  return rows.filter((r) => r.src).map((r) => r.src);
 }
 
-/** Collision-free signature of a committed value — JSON-encoded [src, caption]
- *  pairs (no ambiguous separators, no control characters). Used only to tell
+/** Collision-free signature of a committed string[] value — used only to tell
  *  whether a committed value actually changed. */
 function signature(entries) {
-  return JSON.stringify((Array.isArray(entries) ? entries : []).map((e) => [e?.src ?? "", e?.caption ?? ""]));
+  return JSON.stringify(Array.isArray(entries) ? entries : []);
 }
 
-function GalleryRow({ row, inputId, onSrcChange, onCaptionChange, onRemove }) {
+function GalleryRow({ row, inputId, onSrcChange, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: row.uid,
   });
@@ -81,25 +78,28 @@ function GalleryRow({ row, inputId, onSrcChange, onCaptionChange, onRemove }) {
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-start gap-3 p-3 bg-slate-50 border border-slate-200 rounded-md"
+      className="flex items-stretch gap-3 p-3 bg-slate-50 border border-slate-200 rounded-md"
     >
       <div
         {...attributes}
         {...listeners}
-        className="cursor-grab p-1 mt-1 shrink-0 text-slate-400 hover:text-slate-600"
+        className="cursor-grab p-1 shrink-0 flex items-center text-slate-400 hover:text-slate-600"
         aria-label="Reorder image"
       >
         <GripVertical size={18} />
       </div>
 
-      <div className="flex-1 min-w-0 flex flex-col gap-2">
-        <ImageInput id={inputId} value={row.src} onChange={onSrcChange} />
-        <TextInput value={row.caption} onChange={onCaptionChange} placeholder="Caption (optional)" />
+      <div className="flex-1 min-w-0">
+        <ImageInput id={inputId} value={row.src} onChange={onSrcChange} layout="row" />
       </div>
 
-      <IconButton type="button" variant="danger" size="sm" onClick={onRemove} title="Remove image">
-        <Trash2 size={18} />
-      </IconButton>
+      <div className="self-stretch w-px bg-slate-200 shrink-0" />
+
+      <div className="flex items-center shrink-0">
+        <IconButton type="button" variant="danger" size="sm" onClick={onRemove} title="Remove image">
+          <Trash2 size={18} />
+        </IconButton>
+      </div>
     </div>
   );
 }
@@ -130,7 +130,7 @@ export default function GalleryInput({ id, value, onChange }) {
   }, [value]);
 
   // Update local rows; emit only when the committed (blank-src-filtered) value
-  // actually changes, so adding or captioning a still-srcless row never marks dirty.
+  // actually changes, so adding a still-srcless row never marks dirty.
   const apply = (nextRows) => {
     const changed = signature(toValue(nextRows)) !== signature(toValue(rows));
     setRows(nextRows);
@@ -140,9 +140,8 @@ export default function GalleryInput({ id, value, onChange }) {
   };
 
   // A freshly-added row is local-only until it gets a src (no commit yet).
-  const handleAdd = () => setRows((prev) => [...prev, { uid: nextUid(), src: "", caption: "" }]);
+  const handleAdd = () => setRows((prev) => [...prev, { uid: nextUid(), src: "" }]);
   const setSrc = (uid, src) => apply(rows.map((r) => (r.uid === uid ? { ...r, src } : r)));
-  const setCaption = (uid, caption) => apply(rows.map((r) => (r.uid === uid ? { ...r, caption } : r)));
   const removeRow = (uid) => apply(rows.filter((r) => r.uid !== uid));
 
   const sensors = useSensors(
@@ -169,7 +168,6 @@ export default function GalleryInput({ id, value, onChange }) {
                   row={row}
                   inputId={`${id}-${row.uid}`}
                   onSrcChange={(src) => setSrc(row.uid, src)}
-                  onCaptionChange={(caption) => setCaption(row.uid, caption)}
                   onRemove={() => removeRow(row.uid)}
                 />
               ))}

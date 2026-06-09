@@ -20,10 +20,10 @@
     "languages": "English",
     "season": "May – September",
     "gallery": [
-      { "src": "/uploads/images/aegean-07.jpg", "caption": "" },
-      { "src": "/uploads/images/aegean-08.jpg", "caption": "" },
-      { "src": "/uploads/images/aegean-05.jpg", "caption": "" },
-      { "src": "/uploads/images/aegean-10.jpg", "caption": "" }
+      "/uploads/images/aegean-07.jpg",
+      "/uploads/images/aegean-08.jpg",
+      "/uploads/images/aegean-05.jpg",
+      "/uploads/images/aegean-10.jpg"
     ],
     "itinerary": "09:00 · Transfer | Boat from the old port to Nea Kameni\n09:30 · Crater trail | Guided hike across the lava fields\n11:00 · Hot springs | Swim in the warm volcanic bay\n12:30 · Return | Sail back to Fira",
     "incl_hotel_pickup": true,

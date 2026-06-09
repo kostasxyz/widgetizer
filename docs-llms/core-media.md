@@ -89,7 +89,8 @@ Media metadata is stored in SQLite, while the uploaded binary files remain on di
       "path": "/uploads/images/my-awesome-picture.jpg",
       "metadata": {
         "alt": "An awesome picture of a sunset",
-        "title": "Sunset Over Mountains"
+        "title": "Sunset Over Mountains",
+        "caption": "Golden hour over the caldera"
       },
       "width": 1920,
       "height": 1080,
@@ -111,7 +112,8 @@ Media metadata is stored in SQLite, while the uploaded binary files remain on di
       "path": "/uploads/files/brochure.pdf",
       "metadata": {
         "alt": "",
-        "title": ""
+        "title": "",
+        "caption": ""
       },
       "width": null,
       "height": null,
@@ -225,7 +227,7 @@ Handles metadata editing and drawer functionality:
 
 - **Drawer Management**: Controls metadata editing drawer visibility
 - **File Selection**: Manages which file is being edited
-- **Metadata Updates**: Saves alt text and title changes via API
+- **Metadata Updates**: Saves alt text, title, and (images only) caption changes via API
 - **Loading States**: Tracks save operations in progress
 - **State Synchronization**: Updates parent files state after successful saves
 
@@ -235,7 +237,7 @@ Handles metadata editing and drawer functionality:
 - `MediaToolbar`: Contains view toggle, search bar, media type filter dropdown, bulk actions, and usage refresh (localized)
 - `MediaGrid`: Responsive grid view with thumbnail cards and usage badges
 - `MediaList`: Table view with detailed file information and select-all functionality (localized)
-- `MediaDrawer`: Slide-out panel for editing file metadata (alt text and title, localized)
+- `MediaDrawer`: Slide-out panel for editing file metadata (alt text, title, and — for images only — caption; localized)
 - `MediaSelectorDrawer`: Media browser drawer for selecting existing files in setting inputs (localized)
 - `ConfirmationModal`: Deletion confirmation dialog with usage warnings (localized)
 
@@ -372,7 +374,9 @@ The backend uses Express.js with `multer` for file handling and `sharp` for imag
   5.  It deletes metadata rows from SQLite (`media_files`, with cascade to `media_sizes` + `media_usage`).
 - **Metadata Update (`updateMediaMetadata`)**:
   1.  The controller loads the file from SQLite by `fileId`.
-  2.  It updates persisted metadata columns (`alt`, `title`).
+  2.  It updates persisted metadata columns (`alt`, `title`, `caption`). `caption` is
+      image-only: the controller gates it on `file.type` (`startsWith("image/")`), so a
+      caption sent for a non-image file is stored as `""`.
 
 ### Usage Tracking Service (`server/services/mediaUsageService.js`)
 

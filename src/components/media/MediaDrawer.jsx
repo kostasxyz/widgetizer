@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { X, FileText } from "lucide-react";
@@ -17,11 +18,16 @@ export default function MediaDrawer({ visible, onClose, selectedFile, onSave, lo
     defaultValues: {
       alt: "",
       title: "",
+      caption: "",
     },
   });
 
-  // Track previous selectedFile to prevent infinite loops
-  const prevSelectedFileRef = useRef(JSON.stringify(selectedFile));
+  // Track previous selectedFile so the populate-form effect only resets on a real file
+  // change (not every render). Initialize to a sentinel — NOT the initial selectedFile —
+  // so the first open WITH a file always populates. ImageInput mounts this drawer
+  // already-visible with the file set; seeding the ref with that file would make the effect
+  // below see "no change" and skip the reset, showing blank alt/title/caption.
+  const prevSelectedFileRef = useRef(JSON.stringify(null));
 
   // Update form data when selectedFile or visibility changes
   useEffect(() => {
@@ -33,12 +39,13 @@ export default function MediaDrawer({ visible, onClose, selectedFile, onSave, lo
         reset({
           alt: selectedFile.metadata?.alt || "",
           title: selectedFile.metadata?.title || "",
+          caption: selectedFile.metadata?.caption || "",
         });
         prevSelectedFileRef.current = currentSelectedFileStr;
       }
     } else if (!visible) {
       // Reset form when drawer is closed
-      reset({ alt: "", title: "" });
+      reset({ alt: "", title: "", caption: "" });
       prevSelectedFileRef.current = JSON.stringify(null);
     }
   }, [visible, selectedFile, reset]);
@@ -58,7 +65,9 @@ export default function MediaDrawer({ visible, onClose, selectedFile, onSave, lo
 
   const onSubmitHandler = (data) => {
     if (selectedFile) {
-      onSave(selectedFile.id, { alt: data.alt, title: data.title });
+      // caption is image-only (the field renders for images only; the backend also gates on
+      // file type), so a non-image submits the "" carried by defaultValues.
+      onSave(selectedFile.id, { alt: data.alt, title: data.title, caption: data.caption });
     }
   };
 
@@ -88,7 +97,9 @@ export default function MediaDrawer({ visible, onClose, selectedFile, onSave, lo
   const isImage = selectedFile?.type?.startsWith("image/");
   const getMediaTypeLabel = () => isImage ? t("forms.media.types.image") : t("forms.media.types.file");
 
-  return (
+  // Portaled to <body> so the fixed overlay escapes any ancestor stacking context
+  // (e.g. a @dnd-kit sortable row's position/z-index in GalleryInput).
+  return createPortal(
     <div
       className="fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ease-in-out"
       onClick={onClose}
@@ -162,6 +173,17 @@ export default function MediaDrawer({ visible, onClose, selectedFile, onSave, lo
             <p className="form-description">{t("forms.media.titleHelp")}</p>
           </div>
 
+          {/* Caption — images only (a caption is an image concept; the backend also gates on type) */}
+          {isImage && (
+            <div className="form-field">
+              <label htmlFor="caption" className="form-label-optional">
+                {t("forms.media.captionLabel")}
+              </label>
+              <input type="text" id="caption" {...register("caption")} className="form-input" />
+              <p className="form-description">{t("forms.media.captionHelp")}</p>
+            </div>
+          )}
+
           <div className="form-actions-separated">
             <Button type="button" onClick={onClose} variant="secondary">
               {t("common.cancel")}
@@ -172,6 +194,7 @@ export default function MediaDrawer({ visible, onClose, selectedFile, onSave, lo
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
