@@ -885,7 +885,7 @@ async function renderLiquidTemplate(projectId, templateString, context, sharedGl
  * @param {object} args
  * @param {string} args.projectId - Project UUID.
  * @param {object} args.schema - Normalized collection schema.
- * @param {object} args.item - Raw item (an export item, or the preview draft item).
+ * @param {object} args.item - Raw item (an export item, or a preview item).
  * @param {string} args.template - The collection type's `template.liquid` source.
  * @param {object} args.rawThemeSettings - Raw theme settings.
  * @param {string} args.renderMode - "publish" | "preview".

@@ -67,7 +67,7 @@ The stored value and the sort key never change with formatting — formatting is
 ## 4. File-by-file changes
 
 ### A. The `date` setting type (general-purpose)
-- **`src/components/settings/supportedSettingTypes.js`** — add `"date"` to `SUPPORTED_SETTING_TYPES`
+- **`src/core/config/supportedSettingTypes.js`** — add `"date"` to `SUPPORTED_SETTING_TYPES`
   (single source of truth shared with the backend collection-schema validator).
 - **`src/components/settings/inputs/DateInput.jsx`** (new) — native `<input type="date">` styled with
   the app form classes; value is `"YYYY-MM-DD"` or `""`. Export from `src/components/settings/inputs/index.js`.

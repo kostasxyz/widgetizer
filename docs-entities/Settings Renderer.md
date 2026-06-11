@@ -21,6 +21,6 @@
 
 ## Source
 - `src/components/settings/`
-- `src/components/settings/supportedSettingTypes.js`
+- `src/core/config/supportedSettingTypes.js`
 - `docs-llms/theming-setting-types.md`
 

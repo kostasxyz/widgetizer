@@ -6,6 +6,7 @@ import { getAllPages } from "../../queries/pageManager";
 import useAutoSave from "../../stores/saveStore";
 import usePageStore from "../../stores/pageStore";
 import PreviewModeToggle from "../preview/PreviewModeToggle";
+import { openSitePreview } from "../../lib/openSitePreview";
 
 export default function EditorTopBar({
   pageName,
@@ -132,16 +133,7 @@ export default function EditorTopBar({
 
   const handleOpenPreview = useCallback(() => {
     if (!pageId) return;
-
-    const electronOpenPreview = window.electronUpdater?.openPreviewWindow;
-    if (typeof electronOpenPreview === "function") {
-      electronOpenPreview(pageId);
-      return;
-    }
-
-    const previewUrl = new URL(`/preview/${pageId}`, window.location.origin).toString();
-    const previewWindow = window.open(previewUrl, "widgetizer-preview");
-    previewWindow?.focus();
+    openSitePreview(`/preview/${pageId}`);
   }, [pageId]);
 
   const hasMultiplePages = pages.length > 1;

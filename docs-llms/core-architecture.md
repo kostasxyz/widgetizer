@@ -247,7 +247,7 @@ Owns schema validation/migration, item CRUD with atomic + slug-safe writes, `_or
 - `server/utils/atomicFs.js` - `writeJsonAtomic` (UUID-tmp + rename), shared by item and `_order.json` writes
 - `server/utils/linkPrefixer.js` - `prefixInternalHref` / `normalize`, shared by widget/menu/collection link resolvers for depth-aware paths
 - `src/core/filters/collectionFilter.js` - the `| collection` Liquid filter, registered in `renderingService.configureLiquidEngine`
-- `src/components/settings/supportedSettingTypes.js` - single source of truth for valid setting types (renderer + schema validator)
+- `src/core/config/supportedSettingTypes.js` - single source of truth for valid setting types (renderer + schema validator)
 - Wired into `mediaUsageService` (collection media), `themeUpdateService` (`collection-types` updatable), `linkEnrichment` (page-delete cleanup / duplication), and `exportController` (item-page export)
 
 ---

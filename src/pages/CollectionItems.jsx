@@ -33,7 +33,7 @@ import PageLayout from "../components/layout/PageLayout";
 import Button, { IconButton } from "../components/ui/Button";
 import Table from "../components/ui/Table";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
-import CollectionItemPreview from "../components/collections/CollectionItemPreview";
+import { openSitePreview } from "../lib/openSitePreview";
 
 export default function CollectionItems() {
   const { t } = useTranslation();
@@ -48,7 +48,6 @@ export default function CollectionItems() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [showInvalidOnly, setShowInvalidOnly] = useState(false);
-  const [previewSlug, setPreviewSlug] = useState(null);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [selectedSlugs, setSelectedSlugs] = useState([]);
   const [orderedItems, setOrderedItems] = useState([]);
@@ -245,7 +244,7 @@ export default function CollectionItems() {
                 type="button"
                 onClick={() => {
                   setOpenMenuId(null);
-                  setPreviewSlug(item.slug);
+                  openSitePreview(`/preview/collection/${schema.slugPrefix}/${item.slug}`);
                 }}
                 className={`${menuButtonClass} text-slate-700 hover:bg-slate-50`}
               >
@@ -463,9 +462,6 @@ export default function CollectionItems() {
 
       {confirmationModal}
 
-      {previewSlug && schema && (
-        <CollectionItemPreview schema={schema} initialSlug={previewSlug} onClose={() => setPreviewSlug(null)} />
-      )}
     </PageLayout>
   );
 }

@@ -18,7 +18,7 @@ import {
 } from "../config.js";
 import { randomUUID } from "node:crypto";
 
-import { isSupportedSettingType } from "../../src/components/settings/supportedSettingTypes.js";
+import { isSupportedSettingType } from "../../src/core/config/supportedSettingTypes.js";
 import { isAtomicTmpFile, writeJsonAtomic } from "../utils/atomicFs.js";
 import { sanitizeSlug, generateUniqueSlug } from "../utils/slugHelpers.js";
 import { prefixInternalHref } from "../utils/linkPrefixer.js";

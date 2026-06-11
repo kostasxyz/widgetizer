@@ -98,7 +98,7 @@ Both project import and theme upload accept ZIP files from external sources. Imp
 
 The preview iframe never receives raw HTML from the builder; it renders through a short-lived server-side token.
 
-**Token-based rendering:** Builder POSTs page data to `/api/preview/token` (collection item drafts use `/api/preview/collection`), which renders HTML server-side and stores it in an in-memory token store (`server/services/previewTokenStore.js`). The iframe loads `/render/:token`. Tokens are random UUIDs that expire after 5 minutes, capped at 1000 concurrent (oldest evicted).
+**Token-based rendering:** Builder POSTs page data to `/api/preview/token` (collection items use `/api/preview/collection`), which renders HTML server-side and stores it in an in-memory token store (`server/services/previewTokenStore.js`). The iframe loads `/render/:token`. Tokens are random UUIDs that expire after 5 minutes, capped at 1000 concurrent (oldest evicted).
 
 **Inline overlay rendering:** Selection/hover overlays are rendered inside the iframe by `previewRuntime.js`, eliminating cross-origin `contentDocument` access. The preview loads same-origin and `postMessage` uses `"*"`.
 

@@ -287,13 +287,14 @@ export function renderPreviewToken(req, res) {
 }
 
 /**
- * Builds a full preview of a single collection item rendered through its
- * theme template.liquid inside the layout (header/footer/main) — the same
- * pipeline export uses, but in "preview" mode against an UNSAVED draft so the
- * editor can preview in-progress edits without persisting.
+ * Builds a render token for a single collection item, rendered through its theme
+ * template.liquid inside the layout (header/footer/main) — the same pipeline export
+ * uses, in "preview" mode. The body carries the settings to render; the navigable
+ * site preview (CollectionItemPagePreview) loads the saved item and passes those in,
+ * so this backs the unified, browsable item preview.
  *
- * Body: { collectionType, slug, settings }. Returns { token }; the caller opens
- * GET /render/:token in a new tab (shared token store with page previews).
+ * Body: { collectionType, slug, settings }. Returns { token }; the caller points an
+ * iframe at GET /render/:token (shared token store with page previews).
  */
 export async function createCollectionPreviewToken(req, res) {
   try {
@@ -344,10 +345,11 @@ export async function createCollectionPreviewToken(req, res) {
     const menuMaps = await loadMenuMaps(folder);
     const collectionItemsByUuid = await loadCollectionItemsByUuid(folder);
 
-    // Draft item assembled from the (unsaved) form values.
+    // Assemble the item to render from the posted settings (the navigable preview
+    // passes the saved item's settings).
     const safeSlug = (slug && String(slug)) || "preview";
     const now = new Date().toISOString();
-    const draftItem = {
+    const previewItem = {
       id: safeSlug,
       uuid: "preview",
       slug: safeSlug,
@@ -383,7 +385,7 @@ export async function createCollectionPreviewToken(req, res) {
     let { html } = await renderCollectionItemPage({
       projectId: activeProjectId,
       schema,
-      item: draftItem,
+      item: previewItem,
       template,
       rawThemeSettings,
       renderMode: "preview",

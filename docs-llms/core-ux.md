@@ -261,7 +261,7 @@ _(Theme-defined collections; see [core-collections.md](core-collections.md) for 
 
 - **Current State:**
   - Search by title/slug, an "invalid items" filter (items failing schema validation show a warning badge), and drag-to-reorder for sortable collections (optimistic update, reverted with an error toast on failure).
-  - A Preview action opens a full-screen, page-editor-style preview (`CollectionItemPreview`) with an item dropdown, desktop/mobile toggle, and back button, using the same `PreviewStage`/`PreviewModeToggle` chrome as the page preview.
+  - A Preview action opens the saved item in the shared navigable site preview (the same one the page editor's Preview button opens), where you can click through to other pages and items.
 - **Status:** ✅ Implemented
 
 ---

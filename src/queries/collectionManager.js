@@ -240,19 +240,20 @@ export async function reorderCollectionItems(type, order) {
 }
 
 /**
- * Render an (unsaved) collection item draft through its theme template and
- * return a short-lived preview token. Open `${API_URL}/render/${token}` to view.
- * @param {{collectionType: string, slug: string, settings: Object}} draft
+ * Render a collection item's settings through its theme template and return a
+ * short-lived preview token. Open `${API_URL}/render/${token}` to view. The
+ * navigable site preview loads the saved item and feeds its settings in here.
+ * @param {{collectionType: string, slug: string, settings: Object}} item
  * @returns {Promise<{token: string}>}
  */
-export async function previewCollectionItem(draft) {
+export async function previewCollectionItem(item) {
   try {
     return await apiFetchJson(
       `/api/preview/collection`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify(item),
       },
       { fallbackMessage: "Failed to build preview" },
     );

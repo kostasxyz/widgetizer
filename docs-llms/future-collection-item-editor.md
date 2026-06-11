@@ -159,10 +159,10 @@ Two surfaces, on purpose, and they don't merge:
 - **Item template editor** — the user adjusts *layout* (the type). Changes affect every item.
 
 Mixing them blurs "affects this item" vs "affects all items" (Shopify keeps the same
-separation). The form's existing **eye-icon item preview stays**: it's the only place to check
+separation). The form's existing **item preview stays** (the Preview button): it's the only place to check
 *your specific item's* content (real photos, a long title that wraps weirdly) against the
 template — the template editor previews a sample item, so it can never answer that question.
-Because every preview path already rides the shared item-page renderer, the eye preview
+Because every preview path already rides the shared item-page renderer, the item preview
 automatically shows the user-arranged layout the day this ships, for free. Navigation-level
 stitching is enough: an "Edit layout" link from the item preview, an item picker in the
 template editor (fork §7.6).
@@ -205,7 +205,7 @@ Two reuse seams make this much cheaper than it sounds:
 Scope ladder for the preview loop:
 
 - **Tier 0 — full iframe reload per change** (debounced). Works today:
-  `POST /api/preview/collection` already renders draft items (the eye-icon preview uses it).
+  `POST /api/preview/collection` already renders an item from posted settings (today it backs the navigable saved-item preview).
   Fine for proving storage/UI; clunky as an editor.
 - **Tier 1 — main-region morph.** Re-render the item page server-side, morph just
   `mainContentHtml` into the iframe. One new runtime message, no per-block endpoint, no flash,

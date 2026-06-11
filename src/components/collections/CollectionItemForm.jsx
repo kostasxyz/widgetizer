@@ -13,7 +13,7 @@ import useProjectStore from "../../stores/projectStore";
 import Button from "../ui/Button";
 import SettingsRenderer from "../settings/SettingsRenderer";
 import SeoFields from "../settings/SeoFields";
-import CollectionItemPreview from "./CollectionItemPreview";
+import { openSitePreview } from "../../lib/openSitePreview";
 
 const HEADER_TYPE = "header";
 
@@ -150,7 +150,6 @@ export default function CollectionItemForm({
     reset,
     watch,
     setValue,
-    getValues,
   } = useForm({
     defaultValues: {
       slug: initialData.slug || "",
@@ -251,18 +250,17 @@ export default function CollectionItemForm({
     }
   };
 
-  // Full-screen preview of the current (unsaved) draft rendered through the
-  // collection's theme template. Only meaningful when the collection has item
-  // pages (otherwise there is no template to render).
-  const [previewDraft, setPreviewDraft] = useState(null);
+  // Preview is only meaningful when the collection produces item pages (otherwise
+  // there's no template to render).
   const canPreview = hasItemPages;
   const [showMore, setShowMore] = useState(false);
+  // Preview opens the item's last *saved* state in the shared navigable site preview
+  // (the same door the page editor's Preview button uses): you land on the item and can
+  // click through to the rest of the site. Disabled until the item is saved — there's no
+  // page on disk to render before then.
   const openPreview = () => {
-    const values = getValues();
-    setPreviewDraft({
-      slug: formatSlug(values.slug || "preview"),
-      settings: values.settings || {},
-    });
+    if (!initialData.slug || !schema.slugPrefix) return;
+    openSitePreview(`/preview/collection/${schema.slugPrefix}/${initialData.slug}`);
   };
 
   return (
@@ -297,8 +295,7 @@ export default function CollectionItemForm({
           </div>
         )}
 
-        {/* Schema-driven fields. The title field gets a sticky row with an
-            icon-only Preview button so it stays reachable while scrolling. */}
+        {/* Schema-driven fields. (Preview lives in the bottom action bar.) */}
         {allSettings.map((setting, index) => {
           if (setting.type === HEADER_TYPE) {
             // Render schema headers as the page form's section titles (1:1 with
@@ -324,22 +321,6 @@ export default function CollectionItemForm({
               error={fieldErrors[setting.id]}
             />
           );
-          if (setting.usedAsTitle && canPreview) {
-            return (
-              <div key={setting.id} className="flex items-end gap-3">
-                <div className="min-w-0 flex-1">{renderer}</div>
-                <button
-                  type="button"
-                  onClick={openPreview}
-                  title={t("collectionsForm.preview")}
-                  aria-label={t("collectionsForm.preview")}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
-                >
-                  <Eye size={18} />
-                </button>
-              </div>
-            );
-          }
           return renderer;
         })}
       </div>
@@ -385,27 +366,34 @@ export default function CollectionItemForm({
         )}
       </div>
 
-      <div className="form-actions-separated justify-end">
-        {onCancel && (
-          <Button type="button" onClick={onCancel} variant="secondary">
-            {t("collections.deleteModal.cancel")}
+      <div className="form-actions-separated justify-between">
+        {canPreview ? (
+          <Button
+            type="button"
+            onClick={openPreview}
+            disabled={!initialData.slug}
+            variant="secondary"
+            title={initialData.slug ? t("collectionsForm.preview") : t("collectionsForm.previewSaveFirst")}
+          >
+            <Eye size={16} />
+            {t("collectionsForm.preview")}
           </Button>
+        ) : (
+          <span />
         )}
-        <Button type="submit" disabled={isSubmitting || !isDirtyProp} variant={isDirtyProp ? "dark" : "primary"}>
-          {isSubmitting ? t("collectionsForm.loading") : submitLabel}
-          {isDirtyProp && <span className="w-2 h-2 bg-pink-500 rounded-full -mt-2" />}
-        </Button>
+        <div className="flex gap-2">
+          {onCancel && (
+            <Button type="button" onClick={onCancel} variant="secondary">
+              {t("collections.deleteModal.cancel")}
+            </Button>
+          )}
+          <Button type="submit" disabled={isSubmitting || !isDirtyProp} variant={isDirtyProp ? "dark" : "primary"}>
+            {isSubmitting ? t("collectionsForm.loading") : submitLabel}
+            {isDirtyProp && <span className="w-2 h-2 bg-pink-500 rounded-full -mt-2" />}
+          </Button>
+        </div>
       </div>
     </form>
-
-    {previewDraft && (
-      <CollectionItemPreview
-        schema={schema}
-        draft={previewDraft}
-        editingSlug={initialData.slug || null}
-        onClose={() => setPreviewDraft(null)}
-      />
-    )}
 
     {confirmationModal}
     </>

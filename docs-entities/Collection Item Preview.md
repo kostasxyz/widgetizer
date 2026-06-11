@@ -1,7 +1,7 @@
 # Collection Item Preview
 
 ## Owns
-- Previewing unsaved or saved collection item pages.
+- Previewing saved collection item pages in the shared navigable site preview.
 
 ## Depends On
 - [[Collections System]]
@@ -14,6 +14,6 @@
 
 ## Source
 - `src/pages/CollectionItemPagePreview.jsx`
-- `src/components/collections/CollectionItemPreview.jsx`
+- `src/lib/openSitePreview.js`
 - `server/controllers/previewController.js`
 
