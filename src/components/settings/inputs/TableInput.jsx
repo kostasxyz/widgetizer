@@ -86,9 +86,15 @@ function TableRow({ row, columns, onCellChange, onRemove }) {
         <GripVertical size={18} />
       </div>
 
-      <div className="flex-1 min-w-0 flex flex-col gap-2">
+      {/* Two columns sit side by side (e.g. Label / Value); any other count stacks, since
+          3+ short inputs in a row get cramped in the settings panel. */}
+      <div
+        className={
+          columns.length === 2 ? "flex-1 min-w-0 grid grid-cols-2 gap-3" : "flex-1 min-w-0 flex flex-col gap-2"
+        }
+      >
         {columns.map((col) => (
-          <label key={col.id} className="flex flex-col gap-1">
+          <label key={col.id} className="flex flex-col gap-1 min-w-0">
             <span className="text-xs font-medium text-slate-500">{col.label || col.id}</span>
             <TextInput value={row.values[col.id] ?? ""} onChange={(v) => onCellChange(col.id, v)} />
           </label>

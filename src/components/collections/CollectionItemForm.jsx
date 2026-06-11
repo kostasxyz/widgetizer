@@ -268,7 +268,9 @@ export default function CollectionItemForm({
   return (
     <>
     <form onSubmit={rhfHandleSubmit(onSubmitHandler)} className="form-container">
-      <div className="form-section">
+      {/* Doubled setting-type rhythm: space-y-8 (32px) in place of .form-section's
+          space-y-4, so schema fields breathe in the collection-item editor. */}
+      <div className="space-y-8">
         {archivedKeys.length > 0 && (
           <div className="mb-4 rounded-sm border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-start gap-2">

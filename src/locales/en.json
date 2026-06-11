@@ -293,6 +293,7 @@
       "closeLabel": "Close media selector",
       "upload": "Upload",
       "browseLibrary": "Choose from library",
+      "orBrowseLibrary": "…or choose from library",
       "importNew": "Import new image",
       "uploaderTitle": "Upload New Media",
       "uploaderDesc": "Select files to add to your library"

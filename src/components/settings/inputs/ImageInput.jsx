@@ -162,7 +162,7 @@ export default function ImageInput({ id, value = "", onChange, size = "full", la
         <img
           src={API_URL(`/api/media/projects/${activeProject.id}${currentImageFile.path}`)}
           alt={currentImageFile.metadata?.alt || "Preview"}
-          className="max-w-full max-h-full object-contain"
+          className={isRow ? "w-full h-full object-cover" : "max-w-full max-h-full object-contain"}
         />
         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
           <Button
@@ -193,7 +193,9 @@ export default function ImageInput({ id, value = "", onChange, size = "full", la
       <div onClick={() => !uploading && fileInputRef.current?.click()} className={emptyStateClassName}>
         <UploadCloud size={isRow ? 24 : 32} />
         {isRow ? (
-          uploading && <p className="mt-1 text-[10px] font-semibold">{uploadProgress}%</p>
+          <p className="mt-1 text-xs font-semibold">
+            {uploading ? `${uploadProgress}%` : t("components.mediaSelector.upload")}
+          </p>
         ) : (
           <>
             <p className="mt-2 text-sm font-semibold">
@@ -205,7 +207,18 @@ export default function ImageInput({ id, value = "", onChange, size = "full", la
       </div>
     );
 
-  const controls = (
+  // In the compact gallery row, the dashed box is the primary "Upload" affordance, so the
+  // library option is demoted to a quiet inline accent link rather than a competing button.
+  const controls = isRow ? (
+    <button
+      type="button"
+      onClick={handleOpenMediaSelector}
+      disabled={uploading}
+      className="rounded p-5 text-sm font-medium text-pink-600 transition-colors hover:text-pink-700 hover:underline disabled:opacity-50"
+    >
+      {t("components.mediaSelector.orBrowseLibrary")}
+    </button>
+  ) : (
     <Button
       onClick={handleOpenMediaSelector}
       disabled={uploading}
@@ -230,7 +243,13 @@ export default function ImageInput({ id, value = "", onChange, size = "full", la
       />
       {mediaEl}
 
-      <div className={isRow ? "flex-1 min-w-0 flex flex-col gap-2" : "mt-2 flex flex-col gap-2"}>{controls}</div>
+      <div
+        className={
+          isRow ? "flex-1 min-w-0 self-stretch flex flex-col items-center justify-center" : "mt-2 flex flex-col gap-2"
+        }
+      >
+        {controls}
+      </div>
 
       {metadataDrawerVisible && currentImageFile && (
         <MediaDrawer
