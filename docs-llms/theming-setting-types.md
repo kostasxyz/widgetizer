@@ -111,7 +111,8 @@ A rich text editor with basic formatting (bold, italic, link, lists). The value 
 
 - **`placeholder`** (string, optional): Placeholder text shown when the editor is empty.
 - **`allow_source`** (boolean, optional): If `true`, shows an HTML source toggle button for advanced editing. Defaults to `false`.
-- **`allow_headings`** (boolean, optional): If `true`, adds H2/H3/H4 buttons to the toolbar (for long-form bodies like blog posts). Defaults to `false`, so simple richtext fields stay minimal. The heading tags are in the richtext sanitizer allowlist and styled by the theme's `w-rte` container; H1 is intentionally excluded (reserved for the page/item title). Levels live in one place (`HEADING_LEVELS` in `RichTextInput.jsx`) so more can be added later.
+- **`allow_headings`** (boolean, optional): If `true`, adds H2/H3/H4 buttons to the toolbar (for long-form bodies like blog posts). Defaults to `false`, so simple richtext fields stay minimal. Like `allow_images`, this is a real contract **enforced at the render-time sanitizer, not just the toolbar**: h2–h4 survive only for fields that opt in, so source-mode / imported / API content can't add headings to a field that didn't. They're styled by the theme's `w-rte` container; H1 is intentionally excluded (reserved for the page/item title). Levels live in one place (`HEADING_LEVELS` in `RichTextInput.jsx`) so more can be added later.
+- **`allow_images`** (boolean, optional): If `true`, adds an Insert Image button that opens the Media Library picker (images only) and inserts a block `<img>`. The stored `src` is always the portable `/uploads/…` path (export-safe); the editor displays a browser-loadable URL via a NodeView (`ResolvedImage.js`) so the saved HTML never contains an absolute admin URL. It inserts the `large` size variant when one exists (falling back to `medium`, then the original), and `alt` comes from the media record. **The flag is a real contract, enforced at the render-time sanitizer — not just the editor UI:** a richtext field renders `<img>` only when its `allow_images` is set, so source-mode / imported / API content can't inject images into a field that didn't opt in. When allowed, `<img>` is kept only if its `src` is a valid in-project upload path (a single safe filename segment under `/uploads/images|files/`); external/`data:`/`javascript:` sources, directory traversal, spaces and query strings are all dropped. Used paths are usage-tracked like any other media. Rendering needs **no template work**: the pipeline resolves the stored path to the live media URL (preview) or `assets/…` (export) automatically. Defaults to `false`.
 
 ```json
 {
@@ -138,7 +139,7 @@ A rich text editor with basic formatting (bold, italic, link, lists). The value 
 
 **Features:**
 
-- Formatting toolbar with Bold, Italic, Link, Bullet List, and Numbered List buttons
+- Formatting toolbar with Bold, Italic, Link, Bullet List, and Numbered List buttons (plus optional Heading and Insert Image buttons — see `allow_headings` / `allow_images`)
 - Link editor with URL input (auto-prefixes `https://` if missing)
 - Expand button opens a larger modal for comfortable editing
 - Toolbar buttons highlight based on formatting at cursor position
@@ -159,6 +160,15 @@ allowed HTML tags:
   {{ widget.settings.description | raw }}
 </div>
 ```
+
+**Images need no special template handling.** A richtext field with `allow_images`
+renders the same way — just `| raw`. Inserted images store a portable `/uploads/…`
+path, and the render pipeline rewrites it to the mode-aware served base (the live media
+route in preview, `assets/…` in export) **automatically**, for every richtext field in
+widgets and collection items — the same resolution the `{% image %}` tag does for
+`image` settings. Authors don't (and shouldn't) add a filter. Implementation:
+`resolveRichtextMediaInWidgetData` / `resolveRichtextMediaInSettings` in
+`src/core/utils/richtextMedia.js`, applied during the widget/collection-item render gate.
 
 **List Output Example:**
 

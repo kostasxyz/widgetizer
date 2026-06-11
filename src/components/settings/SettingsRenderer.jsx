@@ -91,6 +91,7 @@ export default function SettingsRenderer({ setting, value, onChange, error, allo
             placeholder={setting.placeholder}
             allowSource={setting.allow_source}
             allowHeadings={setting.allow_headings}
+            allowImages={setting.allow_images}
           />
         );
       case "code":

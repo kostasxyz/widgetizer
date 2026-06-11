@@ -183,6 +183,22 @@
   margin-top: 0;
 }
 
+/* Block images inserted from the Media Library — responsive, never overflow.
+   ProseMirror adds .ProseMirror-selectednode when the image is selected, so the
+   outline doubles as the affordance for deleting it. */
+.richtext-editor .tiptap img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1em 0;
+  border-radius: 0.375rem;
+}
+
+.richtext-editor .tiptap img.ProseMirror-selectednode {
+  outline: 2px solid #db2777; /* pink-600 */
+  outline-offset: 2px;
+}
+
 /* Match the theme's rich-text link rule (.w-rte a): accent color, no underline,
    underline on hover — so the editor reads the same as the published article. */
 .richtext-editor .tiptap a {

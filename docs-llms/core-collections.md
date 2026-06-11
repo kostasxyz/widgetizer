@@ -387,7 +387,6 @@ Deferred, with the v1 data model already forward-compatible:
 - Draft/publish states, per-item undo/redo and autosave. (Live item preview shipped — see §9 "Item preview".)
 - **Forms inside collection templates** — open question, deferred. Interim behavior: item templates should not contain hosted `<form>` markup (the forms manifest scans page widget JSON, not Liquid templates). Authors who need a form on an item page link to a real page that hosts it. Other interactive widgets (sliders, accordions) work fine inside item templates as long as their JS ships via a widget used on at least one page.
 - Project-defined collection types (collections stay theme-defined in v1).
-- Richtext HTML `<img>` media tracking — a pre-existing limitation shared by pages/globals; use the `image` setting type for tracked media.
 
 ---
 

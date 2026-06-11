@@ -24,6 +24,7 @@ import { sanitizeSlug, generateUniqueSlug } from "../utils/slugHelpers.js";
 import { prefixInternalHref } from "../utils/linkPrefixer.js";
 import { sanitizeCollectionItemData, sanitizeDateValue, sanitizeImagePath, stripHtmlTags } from "./sanitizationService.js";
 import { resolveMenuSettings } from "./menuResolver.js";
+import { resolveRichtextMediaInSettings } from "../../src/core/utils/richtextMedia.js";
 
 const SLUG_RE = /^[a-z0-9-]+$/;
 const ALLOWED_SORTS = ["manual", "created_desc", "created_asc", "title_asc", "title_desc", "date_desc", "date_asc"];
@@ -1136,7 +1137,14 @@ export function resolveCollectionItemLinks(item, pagesByUuid, outputPathPrefix, 
  *   settings pass through unresolved (back-compat).
  * @returns {object} resolved + sanitized clone
  */
-export function prepareCollectionItemForRender(item, schema, pagesByUuid, outputPathPrefix, menuDeps = null) {
+export function prepareCollectionItemForRender(
+  item,
+  schema,
+  pagesByUuid,
+  outputPathPrefix,
+  menuDeps = null,
+  mediaBasePaths = null,
+) {
   // Forward the collection-item map so `link` settings that target another
   // collection item resolve (and clear on delete), parity with pageUuid (#11).
   const resolved = resolveCollectionItemLinks(item, pagesByUuid, outputPathPrefix, menuDeps?.collectionItemsByUuid || null);
@@ -1151,6 +1159,12 @@ export function prepareCollectionItemForRender(item, schema, pagesByUuid, output
     });
   }
   sanitizeCollectionItemData(resolved, schema);
+  // Resolve embedded media paths in richtext fields to the render mode's served base
+  // (preview → live media URL, publish → assets/), so an inserted <img> loads without
+  // the theme author wiring anything in the template. Runs after sanitize, on the clone.
+  if (mediaBasePaths && resolved && resolved.settings) {
+    resolveRichtextMediaInSettings(resolved.settings, schema.settings, mediaBasePaths.imagePath, mediaBasePaths.filePath);
+  }
   return resolved;
 }
 

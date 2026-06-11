@@ -13,7 +13,19 @@ import useToastStore from "../../stores/toastStore";
 import { showRejectedFiles } from "../../utils/uploadFeedback";
 import { IMAGE_ACCEPT, FILE_ACCEPT, mapDropzoneRejections } from "../../utils/uploadValidation";
 
-export default function MediaSelectorDrawer({ visible, onClose, onSelect, activeProject, filterType = "all" }) {
+/**
+ * @param {boolean} [elevated=false] — Raises the drawer above an unusually high-z host
+ *   (e.g. the richtext editor's expand overlay at z-1000). Default keeps the standard
+ *   z-40/z-50 used everywhere else.
+ */
+export default function MediaSelectorDrawer({
+  visible,
+  onClose,
+  onSelect,
+  activeProject,
+  filterType = "all",
+  elevated = false,
+}) {
   const { t } = useTranslation();
   const [mediaFiles, setMediaFiles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -113,12 +125,12 @@ export default function MediaSelectorDrawer({ visible, onClose, onSelect, active
   // sibling rows paint on top of the overlay).
   return createPortal(
     <div
-      className="fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ease-in-out"
+      className={`fixed inset-0 bg-black/50 ${elevated ? "z-[1100]" : "z-40"} transition-opacity duration-300 ease-in-out`}
       onClick={onClose}
       aria-hidden={!visible}
     >
       <div
-        className="fixed inset-y-0 right-0 w-full max-w-2xl bg-white shadow-xl z-50 transition-transform duration-300 ease-in-out transform translate-x-0 flex flex-col"
+        className={`fixed inset-y-0 right-0 w-full max-w-2xl bg-white shadow-xl ${elevated ? "z-[1101]" : "z-50"} transition-transform duration-300 ease-in-out transform translate-x-0 flex flex-col`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

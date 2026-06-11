@@ -20,7 +20,7 @@
     },
     { "type": "image", "id": "featured_image", "label": "Featured image" },
     { "type": "gallery", "id": "gallery", "label": "Gallery" },
-    { "type": "richtext", "id": "description", "label": "Description", "allow_headings": true },
+    { "type": "richtext", "id": "description", "label": "Description", "allow_headings": true, "allow_images": true },
     { "type": "header", "id": "details_header", "label": "Details" },
     { "type": "text", "id": "client", "label": "Client" },
     { "type": "text", "id": "year", "label": "Year" },

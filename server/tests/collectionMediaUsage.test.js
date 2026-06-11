@@ -41,7 +41,14 @@ const FILE = "file-spec";
 
 function mediaFiles() {
   return [
-    { id: IMG, filename: "hero.jpg", path: "/uploads/images/hero.jpg", type: "image/jpeg", usedIn: [] },
+    {
+      id: IMG,
+      filename: "hero.jpg",
+      path: "/uploads/images/hero.jpg",
+      type: "image/jpeg",
+      sizes: { large: { path: "/uploads/images/hero-large.jpg", width: 1920, height: 1280 } },
+      usedIn: [],
+    },
     { id: FILE, filename: "spec.pdf", path: "/uploads/files/spec.pdf", type: "application/pdf", usedIn: [] },
   ];
 }
@@ -114,6 +121,21 @@ describe("extractMediaPathsFromCollectionItem", () => {
     assert.ok(paths.includes("/uploads/images/hero.jpg"));
     assert.ok(paths.includes("/uploads/images/social.jpg"), "seo.og_image must be tracked as used media");
   });
+
+  it("extracts upload paths embedded in richtext HTML (e.g. an <img src>)", () => {
+    const item = {
+      settings: {
+        body: '<p>Intro</p><img src="/uploads/images/inline-large.jpg" alt="x"><p>More text</p>',
+        featured_image: "/uploads/images/hero.jpg",
+      },
+    };
+    const paths = extractMediaPathsFromCollectionItem(item);
+    assert.ok(paths.includes("/uploads/images/hero.jpg"));
+    assert.ok(
+      paths.includes("/uploads/images/inline-large.jpg"),
+      "richtext-embedded <img> upload paths must be tracked as used media"
+    );
+  });
 });
 
 describe("updateCollectionItemMediaUsage", () => {
@@ -124,6 +146,16 @@ describe("updateCollectionItemMediaUsage", () => {
     const media = await readMediaFile(PROJECT_ID);
     assert.deepEqual(usedIn(media, IMG), ["collection:portfolio/alpha"]);
     assert.deepEqual(usedIn(media, FILE), []);
+  });
+
+  it("matches a richtext-embedded size variant back to its record (export-safe)", async () => {
+    // A richtext <img> embeds the `large` variant, not the original. Usage must
+    // still resolve to the hero record so export copies the asset.
+    await updateCollectionItemMediaUsage(PROJECT_ID, "news", "post", {
+      settings: { body: '<p>Intro</p><img src="/uploads/images/hero-large.jpg" alt="x"><p>More</p>' },
+    });
+    const media = await readMediaFile(PROJECT_ID);
+    assert.deepEqual(usedIn(media, IMG), ["collection:news/post"]);
   });
 });
 

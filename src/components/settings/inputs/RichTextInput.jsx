@@ -22,7 +22,12 @@ import {
   Heading2,
   Heading3,
   Heading4,
+  Image as ImageIcon,
 } from "lucide-react";
+import ResolvedImage from "./ResolvedImage";
+import MediaSelectorDrawer from "../../media/MediaSelectorDrawer";
+import useProjectStore from "../../../stores/projectStore";
+import { API_URL } from "../../../config";
 import "./RichTextInput.css";
 
 // Heading levels exposed when `allowHeadings` is on. To offer more later, add the
@@ -31,7 +36,7 @@ import "./RichTextInput.css";
 const HEADING_LEVELS = [2, 3, 4];
 const HEADING_ICONS = { 2: Heading2, 3: Heading3, 4: Heading4 };
 
-function MenuBar({ editor, isSourceMode, onToggleSource, allowSource, allowHeadings }) {
+function MenuBar({ editor, isSourceMode, onToggleSource, allowSource, allowHeadings, allowImages, onInsertImage }) {
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
 
@@ -177,6 +182,19 @@ function MenuBar({ editor, isSourceMode, onToggleSource, allowSource, allowHeadi
                 <Unlink size={16} />
               </button>
             )}
+            {allowImages && (
+              <>
+                <div className="richtext-menubar-divider" />
+                <button
+                  type="button"
+                  onClick={onInsertImage}
+                  className="richtext-menubar-button"
+                  title="Insert Image"
+                >
+                  <ImageIcon size={16} />
+                </button>
+              </>
+            )}
           </>
         )}
         {isSourceMode && <span className="richtext-source-label">HTML Source</span>}
@@ -205,12 +223,30 @@ export default function RichTextInput({
   placeholder = "",
   allowSource = false,
   allowHeadings = false,
+  allowImages = false,
 }) {
   const [isSourceMode, setIsSourceMode] = useState(false);
   const [sourceValue, setSourceValue] = useState(value);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
   // Force re-render on selection change so toolbar buttons update
   const [, setSelectionUpdate] = useState(0);
+
+  const activeProject = useProjectStore((state) => state.activeProject);
+
+  // Map a stored portable `/uploads/…` path to a browser-loadable media URL for
+  // *display only* (used by the ResolvedImage NodeView). External/absolute URLs
+  // pass through untouched. The editor is keyed on the project id below, so this
+  // resolver is always current without a ref.
+  const resolveSrc = useCallback(
+    (src) => {
+      if (typeof src === "string" && src.startsWith("/uploads/") && activeProject) {
+        return API_URL(`/api/media/projects/${activeProject.id}${src}`);
+      }
+      return src;
+    },
+    [activeProject],
+  );
 
   const editor = useEditor({
     extensions: [
@@ -232,6 +268,7 @@ export default function RichTextInput({
           rel: "noopener noreferrer",
         },
       }),
+      ...(allowImages ? [ResolvedImage.configure({ inline: false, allowBase64: false, resolveSrc })] : []),
     ],
     content: value,
     onUpdate: ({ editor }) => {
@@ -311,6 +348,23 @@ export default function RichTextInput({
     }
   }, [isExpanded, handleCollapse]);
 
+  // Insert a Media Library image. Stores the portable `/uploads/…` path (export-safe)
+  // and prefers the `large` variant so published pages don't load a full-size original.
+  const handleInsertImage = useCallback(
+    (file) => {
+      if (!editor || !file) return;
+      const src = file.sizes?.large?.path || file.sizes?.medium?.path || file.path;
+      if (!src) return;
+      editor
+        .chain()
+        .focus()
+        .setImage({ src, alt: file.metadata?.alt || "" })
+        .run();
+      setMediaPickerOpen(false);
+    },
+    [editor],
+  );
+
   const renderEditor = (expanded = false) => (
     <>
       <MenuBar
@@ -319,6 +373,8 @@ export default function RichTextInput({
         onToggleSource={handleToggleSource}
         allowSource={allowSource}
         allowHeadings={allowHeadings}
+        allowImages={allowImages}
+        onInsertImage={() => setMediaPickerOpen(true)}
       />
       {isSourceMode ? (
         <textarea
@@ -369,6 +425,18 @@ export default function RichTextInput({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Media Library picker — `elevated` keeps it above the expand overlay (z-1000) */}
+      {allowImages && mediaPickerOpen && (
+        <MediaSelectorDrawer
+          visible={mediaPickerOpen}
+          onClose={() => setMediaPickerOpen(false)}
+          onSelect={handleInsertImage}
+          activeProject={activeProject}
+          filterType="image"
+          elevated
+        />
       )}
     </>
   );

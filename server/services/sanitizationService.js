@@ -13,26 +13,50 @@ export function stripHtmlTags(value) {
   return DOMPurify.sanitize(value, { ALLOWED_TAGS: [] });
 }
 
-/**
- * DOMPurify configuration for richtext fields.
- * Allows only the safe inline formatting tags produced by the Tiptap editor.
- * Text and textarea fields are handled by LiquidJS autoescape (outputEscape: "escape").
- */
-const RICHTEXT_CONFIG = {
-  ALLOWED_TAGS: ["p", "h2", "h3", "h4", "strong", "em", "a", "br", "span", "ul", "ol", "li"],
-  ALLOWED_ATTR: ["href", "target", "rel", "class"],
-  ALLOW_DATA_ATTR: false,
-};
+// Safe inline formatting tags/attrs produced by the Tiptap editor. Headings and `<img>`
+// are NOT here: both are opt-in per field (`allow_headings` / `allow_images`) and added
+// to the allowlist only for fields that declare them (see sanitizeRichText), so the flags
+// are real contracts, not just editor-UI toggles. Text/textarea are handled by LiquidJS
+// autoescape (outputEscape: "escape").
+const RICHTEXT_BASE_TAGS = ["p", "strong", "em", "a", "br", "span", "ul", "ol", "li"];
+const RICHTEXT_HEADING_TAGS = ["h2", "h3", "h4"];
+const RICHTEXT_BASE_ATTR = ["href", "target", "rel", "class"];
+
+// A richtext <img> src must be exactly an in-project upload path with a single safe
+// filename segment — the same charset the media scanner tracks. This rejects external /
+// tracking-pixel sources AND malformed paths that aren't real uploads: directory
+// traversal (`/uploads/images/../secret.png`), spaces, and `?query` strings, none of
+// which would track or export reliably. DOMPurify already empties javascript:/data: srcs.
+const UPLOAD_SRC_RE = /^\/uploads\/(?:images|files)\/[A-Za-z0-9._-]+$/;
+
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  if (node.nodeName !== "IMG") return;
+  if (!UPLOAD_SRC_RE.test(node.getAttribute("src") || "")) {
+    node.parentNode?.removeChild(node);
+  }
+});
 
 /**
- * Sanitize richtext HTML, allowing only safe formatting tags.
- * Used for richtext fields before they are output with | raw in templates.
- * @param {string} value - The raw HTML from the richtext editor
- * @returns {string} Sanitized HTML with only allowed tags
+ * Sanitize richtext HTML, allowing only safe formatting tags. Headings (`h2`–`h4`) and
+ * `<img>` are included only when the field opts in via `allow_headings` / `allow_images`,
+ * so those capabilities are real per-field contracts enforced here (the render security
+ * boundary) — not just hidden in the editor UI. Used for richtext fields before they are
+ * output with | raw in templates.
+ * @param {string} value - The raw HTML from the richtext editor.
+ * @param {{allowImages?: boolean, allowHeadings?: boolean}} [options] - Field capabilities
+ *   (default: neither headings nor images).
+ * @returns {string} Sanitized HTML with only allowed tags.
  */
-export function sanitizeRichText(value) {
+export function sanitizeRichText(value, { allowImages = false, allowHeadings = false } = {}) {
   if (typeof value !== "string") return value;
-  return DOMPurify.sanitize(value, RICHTEXT_CONFIG);
+  const tags = [...RICHTEXT_BASE_TAGS];
+  if (allowHeadings) tags.push(...RICHTEXT_HEADING_TAGS);
+  if (allowImages) tags.push("img");
+  return DOMPurify.sanitize(value, {
+    ALLOWED_TAGS: tags,
+    ALLOWED_ATTR: allowImages ? [...RICHTEXT_BASE_ATTR, "src", "alt"] : RICHTEXT_BASE_ATTR,
+    ALLOW_DATA_ATTR: false,
+  });
 }
 
 /**
@@ -179,17 +203,19 @@ export function sanitizeDateValue(value) {
 }
 
 /**
- * Sanitize a single setting value based on its schema-declared type.
+ * Sanitize a single setting value based on its schema definition.
  * Only richtext and link types need active sanitization:
- * - richtext: DOMPurify strips dangerous HTML (output via | raw in templates)
+ * - richtext: DOMPurify strips dangerous HTML; `<img>` is kept only when the field's
+ *   `allow_images` is set (output via | raw in templates)
  * - link: blocks javascript: protocol in hrefs
  * - text/textarea: handled by LiquidJS autoescape (no action needed here)
  * - code: intentionally raw (embeds, custom CSS/JS)
  * @param {*} value - The setting value
- * @param {string} type - The schema type
+ * @param {object} setting - The schema setting (its `type` plus options like `allow_images`)
  * @returns {*} Sanitized value
  */
-function sanitizeSettingValue(value, type) {
+function sanitizeSettingValue(value, setting) {
+  const type = setting?.type;
   // gallery and image are handled before the null guard so a null/undefined value still
   // normalizes (gallery → [], image → "") — the same invariant the theme sanitizer upholds,
   // so an image setting is always a safe string ("" or a valid path) everywhere.
@@ -200,7 +226,10 @@ function sanitizeSettingValue(value, type) {
 
   switch (type) {
     case "richtext":
-      return sanitizeRichText(value);
+      return sanitizeRichText(value, {
+        allowImages: setting.allow_images === true,
+        allowHeadings: setting.allow_headings === true,
+      });
     case "link":
       return sanitizeLink(value);
     default:
@@ -209,16 +238,16 @@ function sanitizeSettingValue(value, type) {
 }
 
 /**
- * Build a lookup map from setting ID to schema type for fast access.
+ * Build a lookup map from setting ID to its schema definition for fast access.
  * @param {Array} schemaSettings - Array of schema setting definitions
- * @returns {Map<string, string>} Map of setting ID → type
+ * @returns {Map<string, object>} Map of setting ID → setting
  */
-function buildTypeMap(schemaSettings) {
+function buildSettingMap(schemaSettings) {
   const map = new Map();
   if (!Array.isArray(schemaSettings)) return map;
   for (const setting of schemaSettings) {
     if (setting.id && setting.type) {
-      map.set(setting.id, setting.type);
+      map.set(setting.id, setting);
     }
   }
   return map;
@@ -344,7 +373,10 @@ function sanitizeThemeSettingValue(value, schema) {
       }
       break;
     case "richtext":
-      sanitized = sanitizeRichText(value);
+      sanitized = sanitizeRichText(value, {
+        allowImages: schema.allow_images === true,
+        allowHeadings: schema.allow_headings === true,
+      });
       break;
     case "link":
       sanitized = sanitizeLink(value);
@@ -410,35 +442,35 @@ export function sanitizeThemeSettings(themeData) {
 
 export function sanitizeWidgetData(resolvedWidgetData, schema) {
   // Sanitize top-level widget settings
-  const settingsTypeMap = buildTypeMap(schema.settings);
+  const settingsMap = buildSettingMap(schema.settings);
 
   if (resolvedWidgetData.settings) {
     for (const [key, value] of Object.entries(resolvedWidgetData.settings)) {
-      const type = settingsTypeMap.get(key);
-      if (type) {
-        resolvedWidgetData.settings[key] = sanitizeSettingValue(value, type);
+      const setting = settingsMap.get(key);
+      if (setting) {
+        resolvedWidgetData.settings[key] = sanitizeSettingValue(value, setting);
       }
     }
   }
 
   // Sanitize block settings
   if (resolvedWidgetData.blocks && Array.isArray(schema.blocks)) {
-    const blockTypeMaps = new Map();
+    const blockSettingMaps = new Map();
     for (const blockSchema of schema.blocks) {
       if (blockSchema.type) {
-        blockTypeMaps.set(blockSchema.type, buildTypeMap(blockSchema.settings));
+        blockSettingMaps.set(blockSchema.type, buildSettingMap(blockSchema.settings));
       }
     }
 
     for (const block of Object.values(resolvedWidgetData.blocks)) {
       if (!block || !block.settings || !block.type) continue;
-      const typeMap = blockTypeMaps.get(block.type);
-      if (!typeMap) continue;
+      const settingMap = blockSettingMaps.get(block.type);
+      if (!settingMap) continue;
 
       for (const [key, value] of Object.entries(block.settings)) {
-        const type = typeMap.get(key);
-        if (type) {
-          block.settings[key] = sanitizeSettingValue(value, type);
+        const setting = settingMap.get(key);
+        if (setting) {
+          block.settings[key] = sanitizeSettingValue(value, setting);
         }
       }
     }
@@ -485,7 +517,7 @@ export function sanitizeCollectionItemData(item, schema) {
     if (setting.type === "table") {
       item.settings[key] = sanitizeTableValue(value, setting.columns);
     } else {
-      item.settings[key] = sanitizeSettingValue(value, setting.type);
+      item.settings[key] = sanitizeSettingValue(value, setting);
     }
   }
 }

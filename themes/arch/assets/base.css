@@ -689,6 +689,18 @@ b {
     }
   }
 
+  & img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin-block: var(--space-lg);
+    border-radius: var(--radius-md);
+
+    &:first-child {
+      margin-block-start: 0;
+    }
+  }
+
   & a {
     color: var(--accent);
     text-decoration: none;

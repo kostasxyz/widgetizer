@@ -27,6 +27,7 @@ import { registerHandleizeFilter } from "../../src/core/filters/handleizeFilter.
 import { registerCollectionFilter } from "../../src/core/filters/collectionFilter.js";
 import { registerDateFilter } from "../../src/core/filters/dateFilter.js";
 import { registerSafeUrlFilter } from "../../src/core/filters/safeUrlFilter.js";
+import { resolveRichtextMediaInWidgetData } from "../../src/core/utils/richtextMedia.js";
 import {
   listCollectionItems,
   getCollectionSchema,
@@ -492,7 +493,10 @@ async function createBaseRenderContext(projectId, rawThemeSettings, renderMode =
       if (limit != null) valid = valid.slice(0, limit);
 
       const result = valid.map((item) => {
-          const resolved = prepareCollectionItemForRender(item, schema, pagesByUuid, outputPathPrefix, menuDeps);
+          const resolved = prepareCollectionItemForRender(item, schema, pagesByUuid, outputPathPrefix, menuDeps, {
+            imagePath: imageBasePath,
+            filePath: fileBasePath,
+          });
           const url = schema?.hasItemPages
             ? `${outputPathPrefix}${schema.slugPrefix}/${resolved.slug}.html`
             : null;
@@ -707,6 +711,13 @@ async function renderWidget(
     // resolvedWidgetData is already a deep clone, safe to mutate in place.
     sanitizeWidgetData(resolvedWidgetData, schema);
 
+    // Base context first: it carries the mode-aware media bases (imagePath/filePath),
+    // which resolve embedded media paths inside richtext settings before the template
+    // renders — so a richtext <img> loads in both preview and export with no per-template
+    // wiring. Runs on the already-sanitized clone; stored values keep their portable path.
+    const baseContext = await createBaseRenderContext(projectId, rawThemeSettings, renderMode, sharedGlobals);
+    resolveRichtextMediaInWidgetData(resolvedWidgetData, schema, baseContext.imagePath, baseContext.filePath);
+
     // Create widget context for template
     const widgetContext = {
       id: widgetId,
@@ -716,9 +727,6 @@ async function renderWidget(
       blocksOrder: blocksOrder || [],
       index: index, // 1-based index of widget in page (null for global widgets or when not provided)
     };
-
-    // Get base render context (use shared globals if provided)
-    const baseContext = await createBaseRenderContext(projectId, rawThemeSettings, renderMode, sharedGlobals);
 
     // Merge with widget-specific context
     const renderContext = {
@@ -910,13 +918,19 @@ async function renderCollectionItemPage({
       ? { menuMaps: sharedGlobals.menuMaps, collectionItemsByUuid: sharedGlobals.collectionItemsByUuid }
       : null;
 
-  // Resolve item links at the layout's depth + sanitize (render gate, finding #2).
+  // Base context first: its mode-aware media bases (imagePath/filePath) resolve embedded
+  // media paths in the item's richtext fields during the render gate below.
+  const baseContext = await createBaseRenderContext(projectId, rawThemeSettings, renderMode, sharedGlobals);
+
+  // Resolve item links at the layout's depth + sanitize + resolve richtext media
+  // (render gate, finding #2).
   const resolvedItem = prepareCollectionItemForRender(
     item,
     schema,
     sharedGlobals.pagesByUuid,
     sharedGlobals.outputPathPrefix,
     menuDeps,
+    { imagePath: baseContext.imagePath, filePath: baseContext.filePath },
   );
 
   // Render header/footer with the item's globals so their enqueued assets are
@@ -934,7 +948,6 @@ async function renderCollectionItemPage({
   // template render so the item template receives the documented page/collection/
   // project context, not just item (finding #5).
   const itemPageData = buildCollectionItemPageData(schema, resolvedItem, siteUrl);
-  const baseContext = await createBaseRenderContext(projectId, rawThemeSettings, renderMode, sharedGlobals);
   const mainContentHtml = await renderLiquidTemplate(
     projectId,
     template,

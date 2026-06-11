@@ -15,18 +15,27 @@ const THEME_SETTINGS_USAGE_ID = "global:theme-settings";
 /** Upload path prefixes recognised as tracked media assets. */
 const UPLOAD_PREFIXES = ["/uploads/images/", "/uploads/files/"];
 
-/** Check whether a string value is a tracked media upload path. */
-function isMediaPath(value) {
-  return typeof value === "string" && UPLOAD_PREFIXES.some((prefix) => value.startsWith(prefix));
+/**
+ * Match tracked upload paths *anywhere* within a string — both a value that IS a
+ * path and paths embedded in a larger string (e.g. a richtext `<img src>` or an
+ * inline `url(...)`). Conservative by design: over-matching only marks an asset as
+ * "used", which is the safe direction for deletion protection and export copying.
+ */
+const EMBEDDED_MEDIA_PATH_RE = /\/uploads\/(?:images|files)\/[A-Za-z0-9._-]+/g;
+
+function extractMediaPathsFromString(value) {
+  if (typeof value !== "string") return [];
+  return value.match(EMBEDDED_MEDIA_PATH_RE) || [];
 }
 
 /**
  * Recursively collect media paths from a value.
- * Handles strings, plain objects (e.g. link settings with href), and arrays.
+ * Handles strings (incl. paths embedded in richtext HTML), plain objects (e.g.
+ * link settings with href), and arrays.
  */
 function collectMediaPaths(value, mediaPaths) {
   if (typeof value === "string") {
-    if (isMediaPath(value)) mediaPaths.add(value);
+    for (const p of extractMediaPathsFromString(value)) mediaPaths.add(p);
   } else if (value && typeof value === "object" && !Array.isArray(value)) {
     for (const v of Object.values(value)) {
       collectMediaPaths(v, mediaPaths);
@@ -147,8 +156,28 @@ function extractMediaPathsFromThemeSettings(themeData) {
 }
 
 /**
+ * All upload paths that resolve to a given media record — its original `path`
+ * plus every generated size variant (`sizes.{small,medium,large,…}.path`).
+ * Content may reference a record by any of these (e.g. a richtext `<img>` embeds
+ * the `large` variant), so usage matching keys on all of them, not just `path`.
+ * @param {object} file - A media file record with `path` and optional `sizes`.
+ * @returns {string[]} Every path that should mark this record as used.
+ */
+function recordMediaPaths(file) {
+  const paths = [];
+  if (file.path) paths.push(file.path);
+  if (file.sizes && typeof file.sizes === "object") {
+    for (const size of Object.values(file.sizes)) {
+      if (size && size.path) paths.push(size.path);
+    }
+  }
+  return paths;
+}
+
+/**
  * Find file IDs from media files whose paths match the given media paths.
- * @param {Array<object>} files - Media files with id and path
+ * Matches against each record's original path and its size variants.
+ * @param {Array<object>} files - Media files with id, path and optional sizes
  * @param {string[]} mediaPaths - Media paths to match
  * @returns {string[]} Array of matching file IDs
  */
@@ -156,7 +185,7 @@ function findFileIdsByPaths(files, mediaPaths) {
   const mediaPathSet = new Set(mediaPaths);
   const matchedIds = [];
   for (const file of files) {
-    if (file.path && mediaPathSet.has(file.path)) {
+    if (recordMediaPaths(file).some((p) => mediaPathSet.has(p))) {
       matchedIds.push(file.id);
     }
   }
@@ -408,7 +437,7 @@ export async function refreshAllMediaUsage(projectId) {
     const mediaData = await readMediaFile(projectId);
     const pathToFileId = new Map();
     for (const file of mediaData.files) {
-      if (file.path) pathToFileId.set(file.path, file.id);
+      for (const p of recordMediaPaths(file)) pathToFileId.set(p, file.id);
     }
 
     // Fresh usage map: fileId → Set<usageId>

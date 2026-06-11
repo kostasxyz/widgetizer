@@ -80,9 +80,39 @@ describe("sanitizeRichText", () => {
     assert.doesNotMatch(result, /<iframe/i);
   });
 
-  it("strips <img> tags (not in allowed list)", () => {
-    const result = sanitizeRichText('<img src="x" onerror="alert(1)">');
-    assert.doesNotMatch(result, /<img/i);
+  it("keeps <img> only when the field opts in (allow_images), with alt and stripped handlers", () => {
+    const html = '<img src="/uploads/images/photo-large.jpg" alt="A cat" onerror="alert(1)">';
+    const result = sanitizeRichText(html, { allowImages: true });
+    assert.match(result, /<img/i);
+    assert.match(result, /src="\/uploads\/images\/photo-large\.jpg"/);
+    assert.match(result, /alt="A cat"/);
+    assert.doesNotMatch(result, /onerror/i);
+  });
+
+  it("strips ALL <img> when the field does not allow images (default — the opt-in contract)", () => {
+    // Same markup, no allow_images: <img> is not in the allowlist and is removed
+    // regardless of src — so source-mode / imported / API content can't sneak images
+    // into a field the theme author never opted into.
+    const html = '<p>x</p><img src="/uploads/images/photo-large.jpg" alt="A cat"><p>y</p>';
+    assert.doesNotMatch(sanitizeRichText(html), /<img/i);
+    assert.doesNotMatch(sanitizeRichText(html, { allowImages: false }), /<img/i);
+    assert.match(sanitizeRichText(html), /<p>x<\/p>/, "surrounding content is preserved");
+  });
+
+  it("with allow_images, drops <img> whose src is not a valid in-project upload path", () => {
+    for (const src of [
+      "https://evil.com/pixel.gif", // external
+      "data:image/png;base64,AAAA", // data URI
+      "javascript:alert(1)", // dangerous scheme
+      "/etc/passwd", // non-upload absolute
+      "/uploads/images/../secret.png", // directory traversal
+      "/uploads/images/a b.png", // space
+      "/uploads/images/a.png?x=1", // query string
+    ]) {
+      const result = sanitizeRichText(`<p>x</p><img src="${src}" alt="y">`, { allowImages: true });
+      assert.doesNotMatch(result, /<img/i, `expected <img src="${src}"> to be dropped`);
+      assert.match(result, /<p>x<\/p>/, "surrounding content is preserved");
+    }
   });
 
   it("strips <style> tags", () => {
@@ -103,18 +133,28 @@ describe("sanitizeRichText", () => {
     assert.ok(result.includes("Content inside div"));
   });
 
-  it("keeps <h2>-<h4>, strips <h1>/<h5>/<h6> (heading allowlist)", () => {
+  it("with allow_headings, keeps <h2>-<h4> and strips <h1>/<h5>/<h6>", () => {
     const result = sanitizeRichText(
       "<h1>One</h1><h2>Two</h2><h3>Three</h3><h4>Four</h4><h5>Five</h5><h6>Six</h6>",
+      { allowHeadings: true },
     );
     // h2-h4 are allowed (emitted by the allow_headings editor option).
     assert.match(result, /<h2>Two<\/h2>/);
     assert.match(result, /<h3>Three<\/h3>/);
     assert.match(result, /<h4>Four<\/h4>/);
-    // h1 / h5 / h6 are not in the allowlist — tags stripped, text preserved.
+    // h1 / h5 / h6 are never in the allowlist — tags stripped, text preserved.
     assert.doesNotMatch(result, /<h1|<h5|<h6/i);
     assert.ok(result.includes("One"));
     assert.ok(result.includes("Five"));
+  });
+
+  it("strips ALL headings when the field does not allow them (default — opt-in contract)", () => {
+    // Same as images: allow_headings is enforced at the sanitizer, not just the UI.
+    const html = "<h2>Two</h2><p>Body</p><h3>Three</h3>";
+    const result = sanitizeRichText(html);
+    assert.doesNotMatch(result, /<h2|<h3|<h4/i);
+    assert.match(result, /<p>Body<\/p>/);
+    assert.ok(result.includes("Two") && result.includes("Three"), "heading text is preserved");
   });
 
   // --- Dangerous attributes are stripped ---
