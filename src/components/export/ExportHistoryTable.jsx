@@ -5,6 +5,7 @@ import { getExportEntryFile, downloadExportZip, deleteExportAPI } from "../../qu
 import useToastStore from "../../stores/toastStore";
 import useConfirmationAction from "../../hooks/useConfirmationAction";
 import useFormatDate from "../../hooks/useFormatDate";
+import { formatFileSize } from "../../utils/formatFileSize";
 import Table from "../ui/Table";
 import Badge from "../ui/Badge";
 import { Loader2, ExternalLink, Trash2, Calendar, Download, Package, MoreVertical } from "lucide-react";
@@ -121,6 +122,7 @@ export default function ExportHistoryTable({
             headers={[
               t("exportSite.history.headers.version"),
               t("exportSite.history.headers.created"),
+              t("exportSite.history.headers.size"),
               t("exportSite.history.headers.status"),
               t("exportSite.history.headers.actions"),
             ]}
@@ -142,6 +144,9 @@ export default function ExportHistoryTable({
                     <Calendar className="h-4 w-4 mr-2" />
                     {formatDate(exportRecord.timestamp)}
                   </div>
+                </td>
+                <td className="py-3 px-4 whitespace-nowrap">
+                  <span className="text-sm text-slate-600">{formatFileSize(exportRecord.sizeBytes)}</span>
                 </td>
                 <td className="py-3 px-4 whitespace-nowrap">
                   <Badge

@@ -55,6 +55,22 @@ function resolveOutputDir(outputDir) {
   return path.join(getPublishDir(), path.basename(outputDir));
 }
 
+// Recursively sum the byte size of every file under a directory. Cheap for the
+// small static sites this targets; used to surface an export's total size.
+async function getDirectorySize(dirPath) {
+  let total = 0;
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      total += await getDirectorySize(full);
+    } else if (entry.isFile()) {
+      total += (await fs.stat(full)).size;
+    }
+  }
+  return total;
+}
+
 // Helper function to record an export and trim old versions
 async function recordExport(projectId, version, outputDir, status = "success") {
   const exportRecord = exportRepo.recordExport(projectId, version, outputDir, status);
@@ -1158,6 +1174,23 @@ export async function getExportHistory(req, res) {
 
     const exports = exportRepo.getExports(projectId);
 
+    // Attach the on-disk total size per export (null when the directory is gone, e.g. a
+    // failed export or one cleaned up by retention). Computed on read — no stored column.
+    const exportsWithSize = await Promise.all(
+      exports.map(async (record) => {
+        const dir = resolveOutputDir(record.outputDir);
+        let sizeBytes = null;
+        if (dir && (await fs.pathExists(dir))) {
+          try {
+            sizeBytes = await getDirectorySize(dir);
+          } catch (err) {
+            console.warn(`Could not compute size for export ${record.outputDir}:`, err.message);
+          }
+        }
+        return { ...record, sizeBytes };
+      }),
+    );
+
     // Get the configured limit for exports to show
     let maxExports = 10; // default fallback
     try {
@@ -1170,8 +1203,8 @@ export async function getExportHistory(req, res) {
 
     res.json({
       success: true,
-      exports,
-      totalExports: exports.length,
+      exports: exportsWithSize,
+      totalExports: exportsWithSize.length,
       maxVersionsToKeep: maxExports,
     });
   } catch (error) {

@@ -638,6 +638,7 @@
       "headers": {
         "version": "Version",
         "created": "Created",
+        "size": "Size",
         "status": "Status",
         "actions": "Actions"
       },

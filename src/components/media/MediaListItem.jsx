@@ -4,6 +4,7 @@ import { Search, Trash2, Check, Edit2, MoreVertical, FileText, Copy } from "luci
 import { API_URL } from "../../config";
 import useFormatDate from "../../hooks/useFormatDate";
 import { resolveUsageTitle } from "../../utils/mediaUsageDisplay";
+import { formatFileSize } from "../../utils/formatFileSize";
 
 export default function MediaListItem({
   file,
@@ -21,12 +22,6 @@ export default function MediaListItem({
   menuRef,
 }) {
   const { formatDate } = useFormatDate();
-
-  const formatFileSize = (bytes) => {
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
-    return (bytes / 1048576).toFixed(1) + " MB";
-  };
 
   const cellClass = `py-3 px-4 ${isSelected ? "bg-pink-50" : ""}`;
   const usageBadgeClass =
