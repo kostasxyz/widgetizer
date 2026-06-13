@@ -471,6 +471,10 @@ Exploration notes for exposing Widgetizer functionality over MCP.
 
 Plan and decisions for the `core-form` widget and the export-time `widgetizer.forms.json` manifest.
 
+### **[theme-package.md](theme-package.md)** - Theme Packaging Script (planned)
+
+Design spec for a `theme-package` script that builds a distributable theme bundle (frozen base + per-release deltas) from a theme's git tags. Not yet implemented — records the agreed model and locked decisions.
+
 ---
 
 ## 🔄 Maintenance Notes
