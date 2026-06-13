@@ -7,6 +7,7 @@ import LoadingSpinner from "../ui/LoadingSpinner";
 import Button from "../ui/Button";
 import { formatSlug } from "../../utils/slugUtils";
 import useToastStore from "../../stores/toastStore";
+import useStickyActionBar from "../../hooks/useStickyActionBar";
 import { getThemePresets, getPresetScreenshotUrl } from "../../queries/themeManager";
 
 export default function ProjectForm({
@@ -61,34 +62,13 @@ export default function ProjectForm({
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
 
-  // Detect whether the sticky action bar is currently covering scrollable content.
-  // The sentinel sits right after the bar in the DOM, so it is only visible when
-  // the form is fully scrolled to the bottom (or short enough not to need scrolling).
-  // We must observe against the actual scrolling ancestor (not the viewport), since
-  // the page is laid out inside an inner overflow-y-auto container.
-  const stickyBarSentinelRef = useRef(null);
-  const [isStickyBarStuck, setIsStickyBarStuck] = useState(false);
-  useEffect(() => {
-    const sentinel = stickyBarSentinelRef.current;
-    if (!sentinel || typeof IntersectionObserver === "undefined") return;
-    const findScrollParent = (node) => {
-      let current = node?.parentElement || null;
-      while (current && current !== document.body) {
-        const { overflowY } = window.getComputedStyle(current);
-        if ((overflowY === "auto" || overflowY === "scroll") && current.scrollHeight > current.clientHeight) {
-          return current;
-        }
-        current = current.parentElement;
-      }
-      return null;
-    };
-    const observer = new IntersectionObserver(([entry]) => setIsStickyBarStuck(!entry.isIntersecting), {
-      root: findScrollParent(sentinel),
-      threshold: 1,
-    });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [presets, themes, presetsLoading]);
+  // Sticky action bar: show the drop shadow only while the bar floats over
+  // scrollable content. Re-checked when preset/theme loads change the form height.
+  const { sentinelRef: stickyBarSentinelRef, isStuck: isStickyBarStuck } = useStickyActionBar([
+    presets,
+    themes,
+    presetsLoading,
+  ]);
 
   // Track previous initialData to prevent infinite loops
   const prevInitialDataRef = useRef(JSON.stringify(initialData));
@@ -449,7 +429,7 @@ export default function ProjectForm({
       </div>
 
       <div
-        className={`sticky bottom-0 -mx-4 -mb-4 flex justify-end gap-2 border-t bg-white px-4 py-4 rounded-b-md z-10 transition-shadow duration-200 ${
+        className={`sticky bottom-0 -mx-6 -mb-4 flex justify-end gap-2 border-t bg-white px-6 py-4 rounded-b-md z-10 transition-shadow duration-200 ${
           isStickyBarStuck
             ? "border-slate-200 shadow-[0_-12px_24px_-4px_rgba(15,23,42,0.18)] after:content-[''] after:absolute after:left-0 after:right-0 after:top-full after:h-10 after:bg-white"
             : "border-transparent"

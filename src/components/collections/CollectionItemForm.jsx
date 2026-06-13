@@ -8,6 +8,7 @@ import { formatSlug } from "../../utils/slugUtils";
 import { discardArchivedCollectionItem } from "../../queries/collectionManager";
 import { invalidateMediaCache } from "../../queries/mediaManager";
 import useConfirmationAction from "../../hooks/useConfirmationAction";
+import useStickyActionBar from "../../hooks/useStickyActionBar";
 import useToastStore from "../../stores/toastStore";
 import useProjectStore from "../../stores/projectStore";
 import Button from "../ui/Button";
@@ -254,6 +255,10 @@ export default function CollectionItemForm({
   // there's no template to render).
   const canPreview = hasItemPages;
   const [showMore, setShowMore] = useState(false);
+
+  // Sticky action bar: the shadow shows only while the bar floats over scrollable
+  // content. Re-checked when "More settings" expands/collapses the form height.
+  const { sentinelRef, isStuck } = useStickyActionBar([showMore]);
   // Preview opens the item's last *saved* state in the shared navigable site preview
   // (the same door the page editor's Preview button uses): you land on the item and can
   // click through to the rest of the site. Disabled until the item is saved — there's no
@@ -265,10 +270,10 @@ export default function CollectionItemForm({
 
   return (
     <>
-    <form onSubmit={rhfHandleSubmit(onSubmitHandler)} className="form-container">
+    <form onSubmit={rhfHandleSubmit(onSubmitHandler)} className="space-y-6">
       {/* Doubled setting-type rhythm: space-y-8 (32px) in place of .form-section's
           space-y-4, so schema fields breathe in the collection-item editor. */}
-      <div className="space-y-8">
+      <div className="max-w-xl space-y-8">
         {archivedKeys.length > 0 && (
           <div className="mb-4 rounded-sm border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-start gap-2">
@@ -327,7 +332,7 @@ export default function CollectionItemForm({
 
       {/* More settings — the Filename, plus the SEO editor (Finding #12) for
           collections that render item pages. Collapsed by default, mirroring PageForm. */}
-      <div className="form-section">
+      <div className="max-w-xl form-section">
         <button
           type="button"
           onClick={() => setShowMore((v) => !v)}
@@ -366,7 +371,13 @@ export default function CollectionItemForm({
         )}
       </div>
 
-      <div className="form-actions-separated justify-between">
+      <div
+        className={`sticky bottom-0 z-10 -mx-6 -mb-4 flex justify-between gap-2 rounded-b-md border-t bg-white px-6 py-4 transition-shadow duration-200 ${
+          isStuck
+            ? "border-slate-200 shadow-[0_-12px_24px_-4px_rgba(15,23,42,0.18)] after:absolute after:left-0 after:right-0 after:top-full after:h-10 after:bg-white after:content-['']"
+            : "border-transparent"
+        }`}
+      >
         {canPreview ? (
           <Button
             type="button"
@@ -393,6 +404,7 @@ export default function CollectionItemForm({
           </Button>
         </div>
       </div>
+      <div ref={sentinelRef} aria-hidden="true" className="h-px" />
     </form>
 
     {confirmationModal}
