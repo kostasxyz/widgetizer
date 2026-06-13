@@ -809,6 +809,39 @@
       }
     }
   },
+  "news_grid": {
+    "name": "News Grid",
+    "settings": {
+      "limit": {
+        "label": "Number of items",
+        "description": "Set to 0 to show all items."
+      },
+      "sort": {
+        "label": "Sort by",
+        "options": {
+          "date_desc": "Newest first",
+          "date_asc": "Oldest first",
+          "title_asc": "Title A-Z",
+          "title_desc": "Title Z-A"
+        }
+      },
+      "show_image": {
+        "label": "Show image"
+      },
+      "show_date": {
+        "label": "Show date"
+      },
+      "show_excerpt": {
+        "label": "Show excerpt"
+      },
+      "show_read_more": {
+        "label": "Show 'Read more' button"
+      },
+      "view_all_link": {
+        "label": "'View all' link"
+      }
+    }
+  },
   "checkerboard": {
     "name": "Checkerboard",
     "blocks": {
